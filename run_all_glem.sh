@@ -15,8 +15,8 @@ cd "$ROOT"
 mkdir -p logs
 
 # Feasible on 2x24GB GPUs (products is intentionally excluded — see bottom).
-DEFAULT_DATASETS=(arxiv cora citeseer pubmed wikics bookchild bookhis sportsfit \
-                  cornell texas washington wisconsin)
+DEFAULT_DATASETS=(cornell texas washington wisconsin \
+                  cora citeseer pubmed wikics bookchild bookhis sportsfit arxiv)
 
 # Allow overriding the set on the command line.
 if [ "$#" -gt 0 ]; then
