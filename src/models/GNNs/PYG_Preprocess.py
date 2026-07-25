@@ -2,6 +2,7 @@ import gc
 from time import time
 
 from ogb.nodeproppred import Evaluator
+from utils.function.eval_utils import get_node_evaluator
 from models.GNNs.GAMLP.model import R_GAMLP_RLU
 from models.GNNs.GAMLP.config import GAMLPConfig
 from models.GNNs.gnn_utils import *
@@ -97,7 +98,7 @@ class GAMLP_Trainer():
         self.optimizer = th.optim.Adam(self.model.parameters(), lr=cf.lr, weight_decay=cf.weight_decay)
         self.stopper = EarlyStopping(patience=cf.early_stop, path=cf.checkpoint_file) if cf.early_stop > 0 else None
         self.loss_func = th.nn.CrossEntropyLoss(reduction=cf.ce_reduction)
-        self._evaluator = Evaluator(name=cf.data.ogb_name)
+        self._evaluator = get_node_evaluator(cf)
 
 
         # self.evaluator = lambda pred, labels: self._evaluator.eval(

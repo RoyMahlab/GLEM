@@ -104,6 +104,38 @@ DATA_INFO = {
         **product_settings,
         'cut_off': 256}
 }
+
+# ! Non-OGB text-attributed graphs loaded through ``tag_data.TAGDataset``.
+# Datasets flagged ``loader='tag'`` are routed to ``utils.data.preprocess_tag``
+# for graph structure + tokenization (see preprocess.py dispatch).
+# (n_nodes, n_labels, train_ratio) verified via the TAGDataset load sweep.
+_TAG_META = {
+    'cora': (2708, 7, 0.60),
+    'citeseer': (3186, 6, 0.04),
+    'pubmed': (19717, 3, 0.60),
+    'wikics': (11701, 10, 0.05),
+    'bookchild': (76875, 24, 0.60),
+    'bookhis': (41551, 12, 0.60),
+    'sportsfit': (173055, 13, 0.20),
+    'cornell': (191, 5, 0.48),
+    'texas': (187, 5, 0.48),
+    'washington': (229, 5, 0.48),
+    'wisconsin': (265, 5, 0.48),
+}
+for _tag_name, (_tag_n_nodes, _tag_n_labels, _tag_tr) in _TAG_META.items():
+    DATA_INFO[_tag_name] = {
+        'type': 'tag',
+        'loader': 'tag',
+        'tag_name': _tag_name,
+        'train_ratio': _tag_tr,
+        'n_labels': _tag_n_labels,
+        'n_nodes': _tag_n_nodes,
+        'max_length': 512,
+        'cut_off': 512,
+        'ogb_name': None,
+        'data_root': f'{DATA_PATH}tag/{_tag_name}/',
+    }
+
 get_d_info = lambda x: DATA_INFO[x.split('_')[0]]
 
 TR_RATIO_DICT = {_d: _['train_ratio'] for _d, _ in DATA_INFO.items()}

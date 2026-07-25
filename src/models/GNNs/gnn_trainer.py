@@ -1,4 +1,5 @@
 from ogb.nodeproppred import Evaluator
+from utils.function.eval_utils import get_node_evaluator
 
 import utils.function as uf
 from models.GNNs.gnn_utils import *
@@ -57,7 +58,7 @@ class GNNTrainer():
         print(f'!!!!!GNN Phase, trainable_params are {trainable_params}')
         self.stopper = EarlyStopping(patience=cf.early_stop, path=cf.checkpoint_file) if cf.early_stop > 0 else None
         self.loss_func = th.nn.CrossEntropyLoss(reduction=cf.ce_reduction)
-        self._evaluator = Evaluator(name=cf.data.ogb_name)
+        self._evaluator = get_node_evaluator(cf)
         self.evaluator = lambda pred, labels: self._evaluator.eval(
             {"y_pred": pred.argmax(dim=-1, keepdim=True), "y_true": labels.view(-1, 1)}
         )["acc"]

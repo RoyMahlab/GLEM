@@ -63,7 +63,10 @@ def tokenize_graph(cf):
             print(f'Processing data on LOCAL_RANK #{cf.local_rank}...')
             g_info = load_graph_info(full_cf)
             print(f'Loaded graph structure, start tokenization...')
-            if d.ogb_name == 'ogbn-products':
+            if getattr(d, 'loader', None) == 'tag':
+                from utils.data.preprocess_tag import tokenize_tag_dataset
+                tokenize_tag_dataset(d, g_info.labels)
+            elif d.ogb_name == 'ogbn-products':
                 from utils.data.preprocess_product import _tokenize_ogb_product
                 _tokenize_ogb_product(d, g_info.labels)
             elif d.ogb_name == 'ogbn-papers100M':
@@ -133,6 +136,9 @@ def process_pyg_graph_structure(data, cf):
 
 
 def load_ogb_graph_structure_only(cf):
+    if getattr(cf.data, 'loader', None) == 'tag':
+        from utils.data.preprocess_tag import load_tag_graph_structure
+        return load_tag_graph_structure(cf)
     from ogb.nodeproppred import DglNodePropPredDataset
     data = DglNodePropPredDataset(cf.data.ogb_name, root=uf.init_path(cf.data.raw_data_path))
     g, labels = data[0]

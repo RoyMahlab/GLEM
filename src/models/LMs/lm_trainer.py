@@ -121,7 +121,10 @@ class LMTrainer():
             per_device_eval_batch_size=cf.batch_size * 6 if cf.hf_model in {'distilbert-base-uncased', 'google/electra-base-discriminator'} else cf.batch_size * 10,
             warmup_steps=warmup_steps,
             disable_tqdm=False,
-            dataloader_drop_last=True,
+            # Keep the last (possibly only) batch: single-GPU runs, and small
+            # datasets whose eval split < eval batch size would otherwise yield
+            # zero eval batches -> no eval_loss -> load_best_model_at_end KeyError.
+            dataloader_drop_last=False,
             num_train_epochs=cf.epochs,
             local_rank=cf.local_rank,
             dataloader_num_workers=1,

@@ -15,11 +15,18 @@ GIT_ACCOUNT = 'AndyJZhao'
 GIT_TOKEN = 'GHSAT0AAAAAABRRWTPVFBISNLHINRXUMIWKYSKKV3Q'
 
 # ! Wandb settings
-# WANDB_API_KEY = 'e9e1d0ee12e86ea7a6f8b3fb106dc97dc8f22604'
-# WANDB_DIR = 'wandb'
-# WANDB_ENTITY = 'jianan'
-# WANDB_PROJ = 'CT-Debug'
-WANDB_API_KEY = '6d7419c4c0209ac98b0ae8f24554c9460a5ae0a9'
-WANDB_DIR = 'wandb_temp'
-WANDB_ENTITY = 'cirtraining'
-WANDB_PROJ = 'CT-Debug'
+# Reuse the machine's existing `wandb login` credentials instead of hard-coding a
+# (stale) key. WANDB_ENTITY=None -> logs under the logged-in account's default
+# entity. conf_utils.wandb_init sets os.environ['WANDB_API_KEY'] = WANDB_API_KEY,
+# so we read the key from ~/.netrc (written by `wandb login`), falling back to the
+# WANDB_API_KEY env var.
+import os as _os
+import netrc as _netrc
+
+WANDB_DIR = 'wandb'
+WANDB_PROJ = 'GLEM-TAG'
+WANDB_ENTITY = None
+try:
+    WANDB_API_KEY = _netrc.netrc().authenticators('api.wandb.ai')[2]
+except Exception:
+    WANDB_API_KEY = _os.environ.get('WANDB_API_KEY', '')

@@ -10,6 +10,7 @@ from models.LMs.model import *
 from utils.data.datasets import SeqGraphDataset
 from transformers import logging as trfm_logging
 from ogb.nodeproppred import Evaluator
+from utils.function.eval_utils import get_node_evaluator
 
 METRIC_LIST = ['accuracy']
 
@@ -24,7 +25,7 @@ class LmInfTrainer:
         self.logger = cf.logger
         self.log = cf.logger.log
         self.d = SeqGraph(cf).init()
-        self._evaluator = Evaluator(name=cf.data.ogb_name)
+        self._evaluator = get_node_evaluator(cf)
         self.evaluator = lambda preds, labels: self._evaluator.eval({
             "y_true": th.tensor(labels).view(-1, 1),
             "y_pred": th.tensor(preds).view(-1, 1),
