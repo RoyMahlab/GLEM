@@ -101,8 +101,15 @@ class ModelConfig(metaclass=ABCMeta):
 
                 # ! Create wandb session
                 if self.wandb_id == '':
-                    # First time running, create new wandb
-                    wandb.init(project=WANDB_PROJ, entity=WANDB_ENTITY, reinit=True, config=self.model_conf)
+                    # First time running, create new wandb.
+                    # Group runs by dataset name; name each run by its seed.
+                    # job_type keeps the GLEM sub-runs (LM/GNN/EM phases, tagged
+                    # via wandb_name) distinguishable within a dataset+seed group.
+                    wandb.init(project=WANDB_PROJ, entity=WANDB_ENTITY, reinit=True,
+                               config=self.model_conf,
+                               group=self.dataset.split('_')[0],
+                               name=str(self.seed),
+                               job_type=str(self.wandb_name))
                     self.wandb_id = wandb.run.id
                 else:
                     print(f'Resume from previous wandb run {self.wandb_id}')
