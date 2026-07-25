@@ -1,0 +1,11 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+data/
+temp/
+temp_results/
+
+GLEM/
+local_models/

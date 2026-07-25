@@ -54,7 +54,7 @@ class BertConfig(LMConfig):
             ),
         'TinyBert':
             SN(
-                hf_model='prajjwal1/bert-tiny',
+                hf_model='/home/roymahlab/projects/GLEM/local_models/bert-tiny',
                 hidden_dim=128,
                 max_bsz=SN(  # Batch size for different device
                     train={12: 8, 16: 18, 24: 120, 32: 720},

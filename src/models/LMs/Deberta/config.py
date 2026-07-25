@@ -13,7 +13,7 @@ class DeBERTaConfig(LMConfig):
     meta_data = {
         'Deberta':
             SN(
-                hf_model='microsoft/deberta-base',
+                hf_model='/home/roymahlab/projects/GLEM/local_models/deberta-base',
                 hidden_dim=768,
                 max_bsz=SN(  # Batch size for different device
                     train={12: 8, 16: 12, 24: 9, 32: 30, 40: 32, 70: 96},

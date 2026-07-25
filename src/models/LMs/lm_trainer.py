@@ -126,6 +126,7 @@ class LMTrainer():
             local_rank=cf.local_rank,
             dataloader_num_workers=1,
             fp16=True,  # if cf.hf_model=='microsoft/deberta-large' else False
+            label_names=['labels'],  # forward uses **input, so Trainer can't infer the label column
         )
 
 
@@ -155,6 +156,10 @@ class LMTrainer():
         self.log(f'LM saved to {cf.lm.ckpt}')
 
     def eval_and_save(self):
+        # Never drop the last (possibly only) eval/test batch, otherwise small
+        # datasets whose size < eval batch size yield zero batches and no metrics.
+        self.trainer.args.dataloader_drop_last = False
+
         def get_metric(split):
             self.eval_phase = 'Test' if split == 'test' else 'Eval'
             mtc_dict = self.trainer.predict(self.datasets[split]).metrics

@@ -1,4 +1,5 @@
 import subprocess as sp
+import sys
 from pathlib import Path
 from types import SimpleNamespace as SN
 
@@ -30,7 +31,7 @@ PROJ_NAME = 'CirTraining'
 # ! Project Path Settings
 
 GPU_CF = {
-    'py_path': f'{str(Path.home())}/miniconda/envs/ct/bin/python',
+    'py_path': sys.executable,
     'mnt_dir': f'{LINUX_HOME}/{PROJ_NAME}/',
     'default_gpu': '0',
 }
