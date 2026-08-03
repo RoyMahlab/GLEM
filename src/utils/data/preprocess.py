@@ -186,6 +186,12 @@ def load_graph_info(cf):
             print(f'Detected processed feature, LOCAL_RANK #{cf.local_rank} start loading!')
             time.sleep(5)  # Wait f
     g_info = uf.pickle_load(d._g_info_file)
+    # Arm 3 label-regime sweep. Applied here, after the cached pickle is loaded
+    # and without writing back, so every consumer (GLEMConfig._exp_init and
+    # SeqGraph.init read it independently) sees the same split. No-op unless
+    # GLEM_PROBE_REGIME=fewshot<k>. See probe/fewshot.py.
+    from probe import apply_fewshot
+    g_info = apply_fewshot(g_info, cf)
     return g_info
 
 

@@ -38,6 +38,10 @@ class GNNTrainer():
         self.gold_labels = th.from_numpy(self.d['labels']).to(th.int64).to(cf.device)
         if self.cf.is_augmented:
             self.pseudo_labels = self.d.y_hat(range(self.d.n_nodes))
+        # Union of pseudo-label nodes actually trained on. get_sampled_aug_ids
+        # redraws every epoch, so the set used by an M-step is only knowable by
+        # accumulating it here (EXPERIMENT.md section 7).
+        self._probe_pl_seen = set()
         self.is_gold = self.d.is_gold(range(self.d.n_nodes))
         log_graph_feature_source(self.cf)
 
@@ -81,6 +85,7 @@ class GNNTrainer():
         logits = self._forward(self.g, self.features)
         if self.cf.is_augmented and self.cf.pl_ratio > 0:
             sampled = self.d.get_sampled_aug_ids(int(len(self.d.train_x) * self.cf.pl_ratio))
+            self._probe_pl_seen.update(sampled.tolist())
             sampled = np.concatenate((self.train_x.cpu().numpy(), sampled))
             loss = compute_loss(logits[sampled], self.pseudo_labels[sampled], self.loss_func, self.is_gold[sampled], pl_weight=self.cf.pl_weight, is_augmented=True)
             train_acc = self.evaluator(logits, th.argmax(self.pseudo_labels, 1))
@@ -124,6 +129,15 @@ class GNNTrainer():
         # ! Finished training, load checkpoints
         if self.stopper is not None:
             self.model.load_state_dict(th.load(self.stopper.path))
+        if self.cf.is_augmented:
+            # One M-step completed: the LM taught the GNN. Log its provenance and
+            # copy the teacher logits it consumed, before a later E-step
+            # overwrites them. No-op when unprobed.
+            from probe import record_step
+            record_step(self.cf, self._probe_pl_seen,
+                        teacher_file=getattr(self.cf, 'pseudo_label_file', None),
+                        extra={'epochs_run': epoch + 1,
+                               'best_epoch': None if self.stopper is None else self.stopper.best_epoch})
         return self.model
 
     @th.no_grad()

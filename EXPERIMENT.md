@@ -206,14 +206,16 @@ by reading the loss and feature paths, both recorded here rather than found late
   a slightly different effective weight than in Arm 1. This is a limitation of
   the control, stated in advance, not a result.
 
-**Arm 3 — label regime sweep.** Both arms at (a) the standard split shipped with
-each dataset, and (b) few-shot: the train split subsampled to **3, 5 and 10 labels
-per class**, holding val and test fixed.
+**Arm 3 — label regime sweep. WITHDRAWN 2026-08-03, before any measurement; see
+amendment A5.** As originally preregistered: both arms at (a) the standard split
+and (b) few-shot at 3, 5 and 10 labels per class, holding val/test fixed, on the
+expectation that the effect would be **much stronger at, or present only at,
+few-shot** — with a large labelled fraction the gold-label CE term anchors the
+student and a bad teacher cannot drag it far.
 
-We expect the effect to be **much stronger at, or present only at, few-shot**:
-with a large labelled fraction the gold-label CE term anchors the student and a
-bad teacher cannot drag it far. **If harm appears only in the few-shot regimes,
-that is a finding and will be reported as one, not as a failure.**
+The experiment now runs the **standard split only**. Every verdict in §11 is
+therefore a statement about the full-label regime, and A5 records what that
+forecloses.
 
 ## 9. Datasets
 
@@ -228,8 +230,9 @@ Global and per-node homophily for each dataset will be **computed and reported**
 from the loaded graphs rather than quoted from the literature.
 
 Cost note, recorded so the final scope is auditable: arxiv's E-step is a DeBERTa
-fine-tune and dominates the compute. Planned scope is arxiv at the standard split
-plus few-shot, and the full 4-regime sweep on the small and WebKB datasets. Any
+fine-tune and dominates the compute. With Arm 3 withdrawn (A5) the scope is the
+standard split on all eight datasets, at ≥3 seeds, for Arm 1 and Arm 2 (2a and 2b
+on the four WebKB/GCN configs, where they differ; a single control elsewhere). Any
 configuration listed here that is ultimately not run will be named explicitly in
 §13 as not run — not silently omitted.
 
@@ -288,7 +291,72 @@ Any deviation from §1-12 is recorded here with its date and reason, including
 deviations forced by compute limits or by bugs found during instrumentation.
 Entries are append-only.
 
-- *(none yet)*
+**A1 (2026-08-03) — analysis population under few-shot is still val ∪ test.**
+§7 defines the population as pseudo-labeled nodes with ground truth, "in the
+transductive setting that is the val ∪ test nodes." Under the few-shot regimes the
+nodes dropped from the train split also become unlabeled, so they receive
+pseudo-labels *and* have ground truth, which would enlarge the population in
+few-shot arms only. They are **excluded**: the population is held to val ∪ test in
+every regime so regimes stay comparable. Cost: few-shot NCS is measured on the
+same nodes as standard-split NCS, ignoring a population that GLEM does in fact
+pseudo-label.
+
+**A2 (2026-08-03) — `eval_steps` is clamped to the run's total optimizer steps.**
+`lm_trainer` derives `eval_steps` from `eval_patience`, which is tuned for the
+standard split. Under few-shot the train set is orders of magnitude smaller and the
+derived value can exceed the run's total optimizer steps, yielding zero
+evaluations, no `eval_loss`, and a `KeyError` from `load_best_model_at_end`. Now
+clamped to at least one evaluation. This binds only where the run would otherwise
+crash; on the standard split the original value is already inside the budget and is
+untouched. Affects evaluation cadence and hence which checkpoint
+`load_best_model_at_end` selects in few-shot arms — not the loss, not the method.
+
+**A3 (2026-08-03) — SBERT embeddings computed locally rather than taken from the
+shipped `sbert_x.pt`.** §5 names `all-MiniLM-L6-v2`. Some datasets ship a 384-dim
+`sbert_x.pt`, but of unstated provenance, and the datasets needed here do not all
+have one. Embeddings are therefore computed for every dataset the same way
+(mean pooling over the attention mask, then L2 normalization, per this model's
+`1_Pooling/config.json`). Cross-checked against the shipped cornell tensor:
+**mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
+the choice changes no value — it only makes provenance uniform.
+
+**A5 (2026-08-03) — Arm 3 (few-shot label-regime sweep) withdrawn; standard split
+only.** Requested by the experiment owner, to concentrate effort on full training.
+Recorded before any measurement was taken, so this is a scope decision and not a
+response to results.
+
+What it costs, stated plainly because it bears directly on how a null must be
+read. §8 predicted the harm effect would be strongest at, or exclusive to, the
+few-shot regimes, on the reasoning that ~54% of arxiv being labelled leaves the
+gold-label CE term able to anchor the student against a bad teacher. Dropping the
+sweep removes the arm that would have tested that reasoning. Consequently a **Not
+supported** verdict (§11) at the standard split **cannot** distinguish between
+"uniform pseudo-labeling does not harm this population" and "it does, but the
+gold-label anchor at this labelled fraction masks it." Any null will be reported
+with that limitation attached rather than as a general negative result about GLEM.
+
+Amendments A1 and A2 are moot in consequence — A1 governed a population that only
+differs under few-shot, and A2's clamp only binds on train sets far smaller than
+the standard splits. Both are left in place: the code paths are inert on the
+standard split, and this log is append-only. The regime suffix in `EmIterInfo`
+likewise resolves to the empty string throughout, so all runs reuse GLEM's cached
+pretrain checkpoints exactly as an unprobed run would.
+
+**A4 (2026-08-03) — measurement power of the E-step direction is severely limited
+on the WebKB datasets.** Found by running the instrument, not by reading the code.
+The published GCN recipe sets `lm_pl_ratio=0.1`, and `EmIterInfo.inf_node_ranges`
+turns that into `ceil(n_train * 0.1)` pseudo-label nodes per E-step — on cornell,
+**10 nodes**, of which ~9 fall in val ∪ test, giving **n ≈ 3-7 per median bin** for
+the `gnn->lm` direction. That is the direction where the heterophilous WebKB
+datasets were expected to show the GNN-as-teacher failure most clearly. Raising
+`lm_pl_ratio` would deviate from the published hyperparameters and is therefore
+**not** being done (§1). Consequences, fixed now rather than after seeing results:
+the arxiv/cora/citeseer/pubmed configs use `lm_pl_ratio=1` and so cover the entire
+unlabeled set per E-step — those datasets carry the `gnn->lm` direction at full
+power; the four WebKB datasets' `gnn->lm` rows will be **flagged n < 30 and
+excluded from the verdict** per §5, and enter only the pooled across-dataset figure
+(deliverable 5). The WebKB `lm->gnn` direction is unaffected (n ≈ 30-34 per bin,
+`gnn_pl_ratio=0.2` resampled every epoch).
 
 ---
 

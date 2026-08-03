@@ -50,6 +50,10 @@ class GLEMConfig(ModelConfig):
         self.data = SeqGraph(self)
         from utils.data.preprocess import load_graph_info
         g_info = load_graph_info(self)
+        # Archive the split/labels this run trained on (already few-shot-reduced by
+        # probe.apply_fewshot inside load_graph_info). No-op when unprobed.
+        from probe.snapshots import archive_splits
+        archive_splits(self, g_info)
         self.prt_lm = lm_cf.md.prt_lm[self.data.name]
         n_pl_nodes = sum(~g_info.is_gold) if 'paper' not in self.dataset else len(g_info.splits['test_x']) + len(g_info.splits['valid_x'])
         if 'ind' in self.dataset or 'IND' in self.dataset:  # No test in ind settings

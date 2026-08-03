@@ -31,25 +31,35 @@ class EmIterInfo:
         self.is_pretrain = em_iter < 0
         self.has_prev_iter = em_iter > 0
 
+        # Keys every artefact directory below by label regime (and, under
+        # few-shot, by seed). Empty string for the standard split, so a probed
+        # standard run stays path-identical to an unprobed one and reuses the
+        # pretrained checkpoints already cached in temp/. Without this a few-shot
+        # run would reuse the fully-supervised pretrained LM, since GLEM's
+        # pretrain paths carry neither a regime nor a seed. See
+        # probe/context.py::path_suffix.
+        from probe import context as _probe_ctx
+        _rg = _probe_ctx.path_suffix(cf.seed) if _probe_ctx.enabled() else ''
+
         # ! GNN Related
         if self.is_pretrain:  # Shared pretrain file in Mnt folder
-            gnn_root = f'{MNT_TEMP_DIR}prt_gnn/{cf.dataset}/'
+            gnn_root = f'{MNT_TEMP_DIR}prt_gnn{_rg}/{cf.dataset}/'
             if cf.gnn_ckpt:
                 gnn_folder = f'{gnn_root}{self.cf.gnn_model}/{cf.gnn_ckpt}/'
             else:
                 gnn_folder = f'{gnn_root}{self.cf.gnn_model}/{em_info.lm.model}/{em_info.gnn_cfg_str}/'
         else:
-            gnn_root = f'{TEMP_PATH}glem_gnn/{cf.dataset}/'
+            gnn_root = f'{TEMP_PATH}glem_gnn{_rg}/{cf.dataset}/'
             gnn_folder = f'{gnn_root}{em_info.glem_cfg_str}/'
         self.gnn = SN(folder=gnn_folder, pred=f'{gnn_folder}.pred',
                       result=f'{gnn_folder}.result')
 
         # ! LM Related
         if self.is_pretrain:  # Shared pretrain file in Mnt folder
-            lm_root = f'{MNT_TEMP_DIR}prt_lm/{cf.dataset}/'
+            lm_root = f'{MNT_TEMP_DIR}prt_lm{_rg}/{cf.dataset}/'
             lm_folder = f'{lm_root}{self.cf.lm_model}/{ilm.model}/'
         else:
-            lm_root = f'{TEMP_PATH}glem_lm/{cf.dataset}/'
+            lm_root = f'{TEMP_PATH}glem_lm{_rg}/{cf.dataset}/'
             lm_folder = f'{lm_root}{em_info.glem_cfg_str}/'
         self.lm = get_lm_info(lm_folder, self.cf.lm_model)
 

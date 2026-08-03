@@ -136,6 +136,10 @@ def random_partition_graph(num_nodes, cluster_number=10):
 
 def save_and_report_gnn_result(cf, pred, res):
     uf.save_memmap(pred.cpu().numpy(), uf.init_path(cf.emi.gnn.pred), np.float16)
+    # Archive under an iteration-keyed path before a later M-step overwrites
+    # cf.emi.gnn.pred in place (see probe/snapshots.py). No-op when unprobed.
+    from probe import archive_pred
+    archive_pred(cf, pred, 'gnn')
     if cf.emi.iter < 0:
         # Save results for pre-training to disk be reported at main ct-loop
         uf.pickle_save(res, cf.gnn.result)

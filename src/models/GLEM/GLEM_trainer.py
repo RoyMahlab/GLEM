@@ -52,7 +52,9 @@ class GLEMTrainer():
             self.log(f'\n <<<<<<<<<< LM-Pretraining >>>>>>>>>>')
             available_gpus = self.cf.gpus.split(',')
             gpus = ','.join(available_gpus[:min(self.cf.prt_lm.max_n_gpus, len(available_gpus))])
-            cmd = f'{self.cf.lm_tr_prefix} -m{self.cf.lm_model} {self.cf.prt_lm.cmd} --save_folder={prt_emi.lm.folder} -d{self.cf.dataset} -g{gpus} {f"-wLM_Prt_{self.cf.dataset[:4]}" if self.cf.wandb_on else ""} --em_iter=-1'
+            # wandb is handled only by the GLEM orchestrator (see conf_utils.wandb_init);
+            # subprocesses run with wandb disabled, so no -w/--wandb_id is passed here.
+            cmd = f'{self.cf.lm_tr_prefix} -m{self.cf.lm_model} {self.cf.prt_lm.cmd} --save_folder={prt_emi.lm.folder} -d{self.cf.dataset} -g{gpus} --em_iter=-1'
             uf.run_command_parallel(cmd, gpus, self.log)
             th.cuda.empty_cache()
 
@@ -62,6 +64,13 @@ class GLEMTrainer():
         else:
             self.log(f'\n <<<<<<<<<< LM-Pre-train Inference >>>>>>>>>>')
             self._inf_lm()
+        # Archive the pretrained (gold-only) LM logits as the iter-1 baseline --
+        # the "before" side of the first E-step. Done here rather than only in the
+        # training hook because the two branches above skip the work entirely when
+        # a checkpoint is already cached, in which case no child process runs.
+        from probe import archive_pred_file
+        archive_pred_file(self.cf, prt_emi.lm.pred, 'lm', -1)
+
         prt_res = {f'GLEM/LM_{k}': v
                    for k, v in uf.pickle_load(prt_emi.lm.result).items()}
         self.cf.wandb_log({**prt_res, 'EM-Iter': 0}, log=True)
@@ -87,6 +96,11 @@ class GLEMTrainer():
             cmd = self._get_cmds(self.cf.gnn_tr_prefix, self.cf.gnn, GNNConfig().parser)
             cmd.replace(f'--wandb_id={self.cf.wandb_id}', f' -wGNN_Prt_{self.cf.dataset[:4]}')
             self.run_gnn_cmd(cmd)
+
+        # Same as in _pre_train_lm: the iter-1 GNN baseline is the "before" side of
+        # the first M-step, and must be archived even when the pretrain was cached.
+        from probe import archive_pred_file
+        archive_pred_file(self.cf, prt_emi.gnn.pred, 'gnn', -1)
 
         prt_res = {f'GLEM/GNN_{k}': v
                    for k, v in uf.pickle_load(prt_emi.gnn.result).items()}

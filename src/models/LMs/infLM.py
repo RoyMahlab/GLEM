@@ -69,6 +69,13 @@ class LmInfTrainer:
         trainer.predict(inference_dataset)
         uf.remove_file(f'{self.cf.out_dir}inf/')
 
+        # Archive under an iteration-keyed path before a later E-step overwrites
+        # cf.emi.lm.pred in place (see probe/snapshots.py). These logits are the
+        # LM's post-E-step state and the GNN's next teacher. No-op when unprobed.
+        self.pred.flush()
+        from probe import archive_pred
+        archive_pred(self.cf, self.pred, 'lm')
+
         # Evaluate and save results
         eval = lambda x: self.evaluator(np.argmax(self.pred[x], -1), self.d['labels'][x])
         if hasattr(self.d.gi, 'IDs'):

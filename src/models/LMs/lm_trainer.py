@@ -1,5 +1,6 @@
 import math
 
+import numpy as np
 from datasets import load_metric
 from transformers import AutoModel, EvalPrediction, TrainingArguments, Trainer
 import utils.function as uf
@@ -58,6 +59,17 @@ class LMTrainer():
             train_steps = len(d.train_x) // cf.eq_batch_size + 1
             warmup_steps = int(cf.warmup_epochs * train_steps)
             eval_steps = cf.eval_patience // cf.eq_batch_size
+
+        # eval_patience is tuned for the standard split. Under the few-shot
+        # regimes the train set is orders of magnitude smaller, so the derived
+        # eval_steps can exceed the run's total optimizer steps -- yielding zero
+        # evaluations, hence no eval_loss, hence a KeyError from
+        # load_best_model_at_end. Clamp so at least one evaluation happens. This
+        # only binds when it would otherwise crash; on the standard split
+        # eval_steps is already well inside the budget and is left untouched.
+        total_steps = max(1, math.ceil(len(self.train_data) / cf.eq_batch_size) * math.ceil(cf.epochs))
+        eval_steps = max(1, min(int(eval_steps), total_steps))
+        self.log(f'eval_steps={eval_steps} (total optimizer steps ~{total_steps})')
 
         # ! Load bert and build classifier
         bert_model = AutoModel.from_pretrained(cf.hf_model)
@@ -149,6 +161,16 @@ class LMTrainer():
             compute_metrics=compute_metrics,
         )
         self.eval_phase = 'Eval'
+        if cf.is_augmented:
+            # One E-step: the GNN taught the LM. train_ids mixes gold and
+            # pseudo-labeled nodes; the pseudo-label recipients are the ones in
+            # d.pl_nodes. Unlike the GNN's per-epoch resampling this window is
+            # fixed for the iteration, but it is still only knowable here.
+            from probe import record_step
+            record_step(cf, np.intersect1d(np.asarray(train_ids), np.asarray(d.pl_nodes)),
+                        teacher_file=getattr(cf, 'pseudo_label_file', None),
+                        extra={'n_train_ids': int(len(train_ids)),
+                               'eval_steps': int(eval_steps)})
         self.trainer.train()
         # ! Save bert
         # self.model.save_pretrained(cf.out_ckpt, self.model.state_dict())
