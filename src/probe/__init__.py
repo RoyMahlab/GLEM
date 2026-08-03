@@ -26,4 +26,5 @@ from probe.snapshots import (  # noqa: F401
     archive_pred_file,
     archive_splits,
     record_step,
+    reset_run_dir,
 )

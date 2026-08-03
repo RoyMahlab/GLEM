@@ -52,7 +52,8 @@ class GLEMConfig(ModelConfig):
         g_info = load_graph_info(self)
         # Archive the split/labels this run trained on (already few-shot-reduced by
         # probe.apply_fewshot inside load_graph_info). No-op when unprobed.
-        from probe.snapshots import archive_splits
+        from probe.snapshots import archive_splits, reset_run_dir
+        reset_run_dir(self)  # make re-running a cell idempotent
         archive_splits(self, g_info)
         self.prt_lm = lm_cf.md.prt_lm[self.data.name]
         n_pl_nodes = sum(~g_info.is_gold) if 'paper' not in self.dataset else len(g_info.splits['test_x']) + len(g_info.splits['valid_x'])

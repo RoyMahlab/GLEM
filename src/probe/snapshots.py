@@ -112,6 +112,28 @@ def archive_pred_file(cf, src, kind, em_iter) -> None:
     np.save(out, _read_pred(src, _n_labels(cf)))
 
 
+def reset_run_dir(cf) -> None:
+    """Clear a stale archive so re-running a cell is idempotent.
+
+    ``record_step`` appends to ``steps.jsonl``, so without this a second run of the
+    same ``(dataset, regime, arm, seed)`` would leave duplicate step records and the
+    analysis would count every event twice. Called once per run from
+    ``GLEMConfig._exp_init``, which only the top-level orchestrator executes.
+
+    Skipped when ``em_range`` is set: that resumes a subset of the EM iterations, so
+    the earlier iterations' snapshots are wanted, not stale.
+    """
+    if not context.enabled() or not context.is_main_rank(cf):
+        return
+    if getattr(cf, 'em_range', ''):
+        return
+    import shutil
+    d = _run_dir(cf)
+    if d.exists():
+        shutil.rmtree(d)
+        print(f'[probe] cleared stale archive {d}')
+
+
 def archive_splits(cf, g_info) -> None:
     """Archive the split and labels this run actually used.
 
