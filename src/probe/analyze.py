@@ -77,6 +77,13 @@ def median_bins(values, idx):
 
     The median is taken over the nodes actually analysed rather than over all
     nodes, so the two cells stay balanced in the population being tested.
+
+    Returns ``{}`` when the split degenerates -- i.e. when one side would be empty
+    because the median equals the extreme, as happens for local homophily on the
+    homophilous datasets where ~65% of nodes sit at exactly 1.0. An empty cell is a
+    missing comparison, not a null, so this refuses to report it as a split;
+    callers fall back to :func:`quantile_bins`, the scheme §5 preregistered for
+    exactly this discreteness (EXPERIMENT.md amendment A6).
     """
     v = values[idx]
     finite = np.isfinite(v)
@@ -84,7 +91,10 @@ def median_bins(values, idx):
     if len(idx) == 0:
         return {}
     med = float(np.median(v))
-    return {'low': idx[v <= med], 'high': idx[v > med]}
+    lo, hi = idx[v <= med], idx[v > med]
+    if len(lo) == 0 or len(hi) == 0:
+        return {}
+    return {'low': lo, 'high': hi}
 
 
 def quantile_bins(values, idx, nbins=5):

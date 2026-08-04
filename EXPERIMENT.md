@@ -320,6 +320,37 @@ have one. Embeddings are therefore computed for every dataset the same way
 **mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
 the choice changes no value — it only makes provenance uniform.
 
+**A6 (2026-08-04) — the median split on local homophily is degenerate on the
+homophilous datasets; the E-step direction falls back to the preregistered
+quantile scheme there.** Written before inspecting the quantile-binned outcome.
+
+Measured signal distributions: cora, citeseer and pubmed have **median local
+homophily = 1.000**, with 64-66% of nodes at exactly 1.0. §5's primary scheme
+assigns `v <= median` to the low bin and `v > median` to the high bin, so on those
+datasets the high bin is **empty** and the low bin holds the entire analysed
+population. The four WebKB datasets have median local homophily = 0.000 (q75 = 0.00
+on cornell and texas), giving a valid but heavily unbalanced split.
+
+This is not a null result, it is a **missing test**: a comparison with one empty
+cell measures nothing, so there is nothing for the §11 rule to be applied to. It
+also invalidated the first pooled table computed from these runs, in which the
+apparent low-vs-high teacher-accuracy contrast was in fact cora/citeseer/pubmed
+(all in "low") versus WebKB (supplying every "high" row) — a dataset contrast
+wearing an axis label.
+
+Remedy, and why it is not a post-hoc choice of a favourable test: §5 already
+preregistered **5 quantile bins with duplicate edges collapsed** as the secondary
+scheme, precisely because "local homophily is very discrete on low-degree graphs".
+For the `gnn->lm` direction that secondary scheme becomes the reported one on any
+dataset where the median split yields an empty bin. The median split remains
+primary for `lm->gnn`, where the kNN ambiguity signal is well spread (per-dataset
+medians 0.32-0.73, quartiles well separated) and both bins are populated.
+
+`probe.analyze.median_bins` is additionally being made tie-aware so it reports an
+empty-bin degeneracy explicitly instead of silently returning a one-sided split.
+The affected rows are being recomputed from the existing archive; no retraining is
+needed, since the archive stores logits rather than derived bins.
+
 **A5 (2026-08-03) — Arm 3 (few-shot label-regime sweep) withdrawn; standard split
 only.** Requested by the experiment owner, to concentrate effort on full training.
 Recorded before any measurement was taken, so this is a scope decision and not a
