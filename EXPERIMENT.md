@@ -320,6 +320,36 @@ have one. Embeddings are therefore computed for every dataset the same way
 **mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
 the choice changes no value — it only makes provenance uniform.
 
+**A8 (2026-08-04) — exploratory, post-hoc: corruption normalized by corruptible
+nodes. Did not change the §11 verdict; the control disqualified it.** Recorded
+explicitly as post-hoc because it was computed *after* seeing NCS come out null,
+which is exactly the move preregistration exists to constrain. It does not enter
+the verdict and does not replace NCS.
+
+Motivation was a genuine confound in NCS, not a search for a positive. NCS divides
+by bin size, but corruption is bounded by how many nodes the student had right to
+begin with, and student accuracy before the step is **6-19 points lower** in the
+teacher-out-of-bias bin on every dataset (cornell -19.5, citeseer -18.7, cora -15.4,
+washington -14.2, wisconsin -10.2, pubmed -6.5). So a flat NCS could have been a
+headroom artifact rather than an absence of harm. The 2×2 predicted cell was
+preregistered to isolate exactly this, but is unavailable here: its student-side
+axis is local homophily, degenerate on cora/citeseer/pubmed per A6, and n<30 on the
+WebKB datasets.
+
+Conditioning on corruptible nodes (`corruptions / (acc_before x n)`), the published
+arm does show elevated corruption where the teacher is out of bias — ratios of
+1.26-5.83 on five of six datasets, ~5.8x on cora and ~5.6x on pubmed. **The α=β=0
+control reproduces it at the same magnitude or larger**: cora 5.22, pubmed 6.30,
+texas 8.95, citeseer 1.15, cornell 1.58, washington 1.76. So the fragility of these
+nodes is real but is **not attributable to the pseudo-label term** — it is what
+retraining on gold labels alone does to low-margin nodes. This is §11's
+disqualifying clause firing on a second metric, and it strengthens the
+**Not supported** verdict rather than qualifying it.
+
+Note also that wisconsin, the dataset closest to supporting the hypothesis under
+NCS, reverses on this metric (0.41 published vs 0.80/1.16 control) — consistent
+with its NCS gap being noise, as its p=0.45 already indicated.
+
 **A7 (2026-08-04) — arxiv reduced to seed 0 of both arms, below §10's ≥3 seeds.**
 Cost decision by the experiment owner after the first arxiv run measured at ~13 h
 wall (11 h 08 min to reach its fourth distillation event), which put the full 2
