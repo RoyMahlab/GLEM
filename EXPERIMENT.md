@@ -320,6 +320,21 @@ have one. Embeddings are therefore computed for every dataset the same way
 **mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
 the choice changes no value — it only makes provenance uniform.
 
+**A7 (2026-08-04) — arxiv reduced to seed 0 of both arms, below §10's ≥3 seeds.**
+Cost decision by the experiment owner after the first arxiv run measured at ~13 h
+wall (11 h 08 min to reach its fourth distillation event), which put the full 2
+arms × 3 seeds at roughly 3 days. The driver is `lm_pl_ratio=1`: each E-step
+fine-tunes DeBERTa over all 90.9k gold plus all 78,402 unlabeled nodes, twice per
+run, each followed by a 169,343-node inference pass.
+
+Consequence, which is a hard limit and not a caveat: with one seed per arm, §10's
+sign-stability requirement **cannot be evaluated on arxiv at all**, so no arxiv row
+can reach a **Supported** or **Weakly supported** verdict under §11. arxiv is
+therefore run for a narrower purpose — to establish whether the `gnn->lm` direction
+is *measurable* on a dataset with both real per-node homophily spread and full
+unlabeled coverage, after A4 and A6 left it untestable on all seven other datasets.
+Seeds 1-2 remain available to run later if that question comes back positive.
+
 **A6 (2026-08-04) — the median split on local homophily is degenerate on the
 homophilous datasets; the E-step direction falls back to the preregistered
 quantile scheme there.** Written before inspecting the quantile-binned outcome.
