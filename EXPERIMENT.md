@@ -320,6 +320,42 @@ have one. Embeddings are therefore computed for every dataset the same way
 **mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
 the choice changes no value — it only makes provenance uniform.
 
+**A9 (2026-08-04) — the α=β=0 control is a minimal one-variable ablation only at
+the iteration-0 M-step of the GNN-first configs.** §8 already recorded that no arm
+is teacher-free, because the GNN's input features are always the LM's embeddings.
+This entry records a second, subtler point that the recorded `feature_file`
+provenance makes explicit and that qualifies every cross-arm comparison.
+
+What the runs actually consumed, read from the step records:
+
+| config | M-step | features come from | clean ablation? |
+|---|---|---|---|
+| WebKB (GNN-first) | iteration 0 | the **pretrained** LM, in every arm | **yes** — β is the only difference |
+| WebKB (GNN-first) | iteration 1 | this run's LM | no |
+| arxiv (LM-first) | every iteration | this run's LM | no |
+
+Because the control's LM is itself trained with α=0, its embeddings differ from the
+published arm's. So wherever the GNN's features come from "this run's LM", the two
+arms differ in the GNN's **inputs** as well as in its loss, and the control is
+"pseudo-label CE term removed **plus** the consequent representation drift" rather
+than a clean single-variable ablation. Under `em_order=LM-first` this applies from
+iteration 0, since the E-step runs first.
+
+This does **not** rescue the hypothesis, and the asymmetry is why: §11's clause asks
+whether the pattern survives with the pseudo-label loss switched off. A pattern that
+appears with that term off is not caused by that term, and additional differences in
+the control cannot manufacture the hypothesis's predicted pattern — they can only
+add noise. What it does undercut is the **quantitative** cross-arm comparison in A8
+(e.g. cora 5.83 published vs 5.22 control), since those two numbers come from runs
+whose GNN inputs differ, not only whose losses differ.
+
+The one exactly-clean comparison available is therefore the **iteration-0 M-step of
+the WebKB configs**, where features are the pretrained LM's in all three arms. Any
+strengthened claim about attribution should rest on that cell, with its n stated —
+and its n is small, so the honest reading may be that no exactly-clean, adequately
+powered attribution test exists in this design. Recorded so that limitation is
+visible rather than inferred.
+
 **A8 (2026-08-04) — exploratory, post-hoc: corruption normalized by corruptible
 nodes. Did not change the §11 verdict; the control disqualified it.** Recorded
 explicitly as post-hoc because it was computed *after* seeing NCS come out null,
