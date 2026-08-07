@@ -215,6 +215,109 @@ separated quartiles), so the M-step direction is testable throughout.
 """)
 
 md(r"""
+## 3a. Exactly how the bins are built, scenario by scenario
+
+Bins are formed per **distillation event**, in `src/probe/analyze.py`. Four steps:
+
+**1. Fix the population.** Before any binning:
+
+```python
+gt_pool = np.union1d(sig['valid_x'], sig['test_x'])   # ground truth available
+pl_nodes = np.load(pl_f)                              # actually pseudo-labeled in THIS step
+idx = np.intersect1d(pl_nodes, gt_pool)
+```
+
+`pl_nodes` is read from what the run logged at the time, not reconstructed — the GNN
+resamples its pseudo-label set every epoch, while the LM takes a fixed per-iteration
+window, so this is not recoverable after the fact.
+
+**2. Pick the signal from the step's recorded `direction`** — E-step (GNN teaches) →
+local homophily; M-step (LM teaches) → kNN ambiguity. Signal *values* are computed once
+per `(dataset, seed)` and cached; only the boundaries are derived here.
+
+**3. Drop non-finite, then split.** Isolated nodes carry NaN homophily and are removed
+*before* the median is taken, so they cannot shift it.
+
+- **median (primary)** — `med = np.median(v)`, then `low = v <= med`, `high = v > med`
+- **q5 (secondary)** — 6 quantile edges, `np.unique` collapses duplicates, `np.digitize`
+  assigns. Under heavy ties fewer than 5 bins are realised, by design.
+
+**4. Refuse a degenerate split.** If either side is empty, `median_bins` returns `{}`
+rather than a one-sided split (A6).
+
+Two properties follow. The median is taken **within the analysed population**, not over
+all nodes, which keeps the two cells balanced in the population actually being tested.
+And because that population differs per step, **boundaries are step-dependent** — a
+non-issue on arxiv, where every E-step sees all 78,402 unlabeled nodes so the boundary is
+identical across iterations, but a real limitation on WebKB, where each E-step sees a
+handful of nodes and the median can move between iterations.
+
+The table below is the realised binning for the first step of each direction, published
+arm, seed 0.
+""")
+
+co(r"""
+PROBE = SIGNALS.parent
+rows = []
+for run in sorted(PROBE.glob('*/standard/published/seed0')):
+    ds = run.parts[-4]; key = ds.split('_')[0]
+    sp = np.load(run / 'splits.npz')
+    gt = np.union1d(sp['valid_x'], sp['test_x'])          # ground truth available
+    steps = [json.loads(l) for l in (run / 'steps.jsonl').read_text().splitlines()]
+    for direction in ('gnn->lm', 'lm->gnn'):
+        st = next((s for s in steps if s['direction'] == direction), None)
+        if st is None:
+            continue
+        pl = np.load(run / 'plnodes' / f"step{st['step_index']}_{st['em_phase']}.npy")
+        idx = np.intersect1d(pl, gt)                      # the analysed population
+        if direction == 'gnn->lm':
+            vals, sname, oob = np.load(SIGNALS / f'{key}_homophily.npy'), 'local_homophily', 'low'
+        else:
+            vals, sname, oob = np.load(SIGNALS / f'{key}_standard_s0_ambiguity.npy'), 'knn_ambiguity', 'high'
+        v = vals[idx]
+        fin = np.isfinite(v)                              # isolated nodes -> NaN homophily
+        v = v[fin]
+        med = float(np.median(v)) if len(v) else np.nan
+        n_lo, n_hi = int((v <= med).sum()), int((v > med).sum())
+        edges = np.unique(np.quantile(v, np.linspace(0, 1, 6))) if len(v) else np.array([])
+        rows.append({'dataset': key, 'direction': direction, 'signal': sname, 'oob_bin': oob,
+                     'pop_n': len(idx), 'dropped_nan': int((~fin).sum()), 'median': round(med, 3),
+                     'n_low': n_lo, 'n_high': n_hi,
+                     'median_usable': n_lo > 0 and n_hi > 0,
+                     'min_bin_n': min(n_lo, n_hi), 'meets_n>=30': min(n_lo, n_hi) >= 30,
+                     'q5_bins_realised': max(len(edges) - 1, 0)})
+print('Realised bins — first step of each direction, published arm, seed 0:')
+print(pd.DataFrame(rows).to_string(index=False))
+""")
+
+md(r"""
+**Reading the table by scenario.**
+
+**arxiv, both directions — healthy.** 39,216 / 39,186 on homophily and 40,253 / 38,149 on
+ambiguity. Median homophily 0.677 sits well inside the range, so the split is real. This
+is the only dataset where the E-step is properly binnable.
+
+**cora, citeseer, pubmed — E-step degenerate.** `median = 1.000` and `n_high = 0`. The
+median *is* the maximum, so `v > med` matches nothing. `median_usable = False`, the rows
+are suppressed, and the q5 fallback realises only 2 bins — one of which is the ~65% tie
+mass at 1.0. This is A6.
+
+**WebKB, E-step — hopeless on population size, not on contrast.** The split itself is
+fine (median 0.000, both sides non-empty), but `pop_n` is **6–11 nodes** for the whole
+step, giving bins of 1–3. This is A4: `lm_pl_ratio=0.1` makes the E-step window
+`ceil(n_train x 0.1)`, which on a 190-node graph is ~10 nodes.
+
+**WebKB, M-step — borderline.** Populations of 60–87 give bins of 29–46, straddling the
+n ≥ 30 line: texas fails it at 29 and is excluded, the rest pass narrowly.
+
+**Two details visible only here.** citeseer's E-step population is 120 while its M-step
+is 3,066 — because the E-step window is `ceil(n_train x lm_pl_ratio)` and citeseer's
+train split is only 4% of nodes, so the window is bounded by the *train* set, not the
+unlabeled set. And citeseer drops 4 nodes to NaN homophily: it is the only dataset with
+isolated nodes (86 overall), which are excluded from every bin as §5 requires.
+""")
+
+md(r"""
 ## 4. Does the axis find where the teacher is actually bad?
 
 This is the check that decides whether a null is *informative* or merely vacuous. If
