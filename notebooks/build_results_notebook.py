@@ -34,13 +34,20 @@ that were previously correct, and the net effect there should be **negative**.
 |---|---|
 | **LM → GNN** (M-step, ambiguity axis) | **Not supported** on 6 datasets, no test on 2 |
 | **GNN → LM** (E-step, homophily axis) | **No test** on all 8 — untestable by design, except arxiv |
-| **arxiv GNN → LM** | Shows the *shape* of the weak hypothesis, but cannot be scored: 1 seed, control still running |
+| **arxiv GNN → LM** | Meets **Weakly supported** on substance — and its control does *not* reproduce the pattern. Unscorable: 1 seed (A7) |
 | **GLEM fidelity** | Reproduced test **0.76997** vs paper **0.7697** — faithful |
 
-The conclusion is more interesting than a flat null, and it is not the one the
-hypothesis predicted: **corruption really does concentrate where the teacher is out of
-its bias — up to 5.8× — but it does not make those nodes net worse, and it is not
-clearly attributable to the pseudo-label term at all.** Sections 6–8 unpack why.
+The picture splits by direction, and the split is the finding:
+
+- **LM → GNN** — corruption concentrates where the teacher is out of its bias (up to
+  5×), but the α=β=0 control reproduces that concentration, so it is fragility of
+  low-margin nodes under *any* retraining rather than distillation harm. Not supported.
+- **GNN → LM on arxiv** — the same concentration appears (5.79×) and the control does
+  **not** reproduce it (2.77×, with a *flat* NCS profile). Here the differential really
+  is attributable to the pseudo-label term. This is the one cell where the hypothesis
+  survives contact with its own control (§6a).
+
+Sections 6–8 unpack both.
 """)
 
 md(r"""
@@ -350,6 +357,68 @@ Note also the effect is concentrated in **iteration 0** and gone by iteration 1
 """)
 
 md(r"""
+## 6a. The arxiv control: the one place the disqualifier does not fire
+
+§11 disqualifies any pattern that also appears with the pseudo-label term switched off.
+Everywhere else in this study it fired. On arxiv's E-step it does not.
+""")
+
+co(r"""
+ax2 = ncs[(ncs.dataset == 'arxiv_TA') & (ncs.axis == 'teacher') & (ncs.bin_scheme == 'median')]
+for direction, oob in [('gnn->lm', 'low'), ('lm->gnn', 'high')]:
+    s = ax2[ax2.direction == direction]
+    g = s.groupby(['arm', 'bin']).agg(
+        n=('n', 'sum'), C=('corrections', 'sum'), X=('corruptions', 'sum'),
+        ncs=('ncs', 'mean'), acc_b=('student_acc_before', 'mean'),
+        t_acc=('teacher_acc', 'mean')).reset_index()
+    g['cpc'] = g.X / (g.acc_b * g.n)          # corruptions per corruptible node
+    other = 'high' if oob == 'low' else 'low'
+    piv = g.pivot(index='arm', columns='bin', values='ncs')
+    cpc = g.pivot(index='arm', columns='bin', values='cpc')
+    piv['NCS_gap'] = piv[oob] - piv[other]    # negative = harm concentrated out-of-bias
+    piv['cpc_ratio'] = cpc[oob] / cpc[other]
+    print(f'--- {direction}   (teacher out of bias = {oob}) ---')
+    print(g.round(4).to_string(index=False))
+    print(piv.round(5).to_string(), '\n')
+""")
+
+md(r"""
+**GNN → LM: the control is flat, the published arm is not.**
+
+| arm | NCS in-bias | NCS out-of-bias | gap |
+|---|---|---|---|
+| published | **+0.0142** | **+0.0054** | **−0.0089** |
+| α=β=0 control | −0.0230 | −0.0229 | **+0.0001** |
+
+Read the control first: with the pseudo-label term off, retraining the LM on gold alone
+makes it *worse* than the pretrained baseline (−0.023) — and it does so **uniformly
+across the homophily axis**. Retraining churn is therefore axis-blind here. Switch the
+pseudo-label term on and the LM improves in both bins, but improves **less** where its
+GNN teacher is unreliable. Corruption per corruptible node is 5.79× out-of-bias in the
+published arm against 2.77× in the control.
+
+So the *differential* along the axis is attributable to the teacher, which is exactly
+what the hypothesis claims. On substance this is §11's **Weakly supported**: NCS
+positive throughout, significantly lower out-of-bias (p = 4.9e-6), teacher accuracy
+degrading (0.957 → 0.581), pattern absent from the control.
+
+It is still scored **no test**, because A7's single seed makes §10's across-seed
+stability check vacuous. That gate was set before any data existed and is not waived
+now that a result depends on it.
+
+**One limitation that does *not* apply here (A10, correcting A9).** A9 warned the
+control is a clean single-variable ablation only at WebKB's iteration-0 M-step, because
+the GNN's input features are LM embeddings. That holds for `lm->gnn`. It does **not**
+hold for `gnn->lm`: the LM student's inputs are its own text tokens, and the only
+channel from the GNN teacher is the pseudo-label file — so at α=0 the LM's training is
+entirely independent of the GNN. The E-step control is clean on every dataset.
+
+**LM → GNN on arxiv** behaves like the other seven: the published gap is +0.0031, the
+wrong sign, and the corruption ratio is 4.86× published against 5.08× control. The
+disqualifier fires.
+""")
+
+md(r"""
 ## 7. Why NCS stays positive — absolute vs *relative* teacher weakness
 
 Post-hoc (not preregistered), and the most useful thing in the report.
@@ -517,11 +586,19 @@ splits them:
 
 1. **Corruption concentrates where the teacher is out of its bias** — *supported*, and
    substantially: 4,000 nodes flipped correct→wrong in a single arxiv E-step, at 5.8× the
-   in-bias rate. But §8 shows the α=0 control reproduces this, so it is better described
-   as *those nodes are fragile under any retraining* than as *the teacher corrupts them*.
-2. **The net effect in those bins is negative** — *not supported*. Corrections outnumber
-   corruptions even there, because the teacher, while degraded in absolute terms,
-   generally remains no worse than the student (§7).
+   in-bias rate. Whether the *teacher* causes it depends on direction, and the α=β=0
+   control separates the two cases cleanly:
+   - **LM → GNN** — the control reproduces the concentration (cora 5.22 vs 5.83; pubmed
+     6.30 vs 5.59; arxiv 5.08 vs 4.86). Better described as *those nodes are fragile
+     under any retraining*.
+   - **GNN → LM on arxiv** — the control does **not** (2.77× vs 5.79×, with a flat NCS
+     profile against a differentiated one). Here the concentration *is* attributable to
+     the pseudo-label term. §6a.
+2. **The net effect in those bins is negative** — *not supported anywhere*. Corrections
+   outnumber corruptions even out-of-bias, because the teacher, while degraded in
+   absolute terms, generally remains no worse than the student (§7). What arxiv shows is
+   a *smaller positive*, not a negative — which is why §11 grades it weak rather than
+   full support.
 
 **The most useful finding is not the null itself but its cause.** The hypothesis
 conflated absolute teacher weakness with weakness *relative to the student*. Only the
@@ -546,9 +623,13 @@ discovered late:
 
 **What would settle it**, in descending order of value:
 
-1. **The few-shot sweep (A5, withdrawn).** Directly tests the masking explanation.
-2. **arxiv seeds 1–2 plus its control.** Converts the strongest signal in the study from
-   *no test* into a scored verdict.
+1. **arxiv seeds 1–2 (published + control).** Now the highest-value run in the study,
+   not the second: seed 0 already satisfies **Weakly supported** on substance with a
+   clean control, and only §10's across-seed stability gate stands between it and a
+   scored verdict. Two more seeds per arm decide it. At ~12 h per run alone on the GPU,
+   that is roughly two days.
+2. **The few-shot sweep (A5, withdrawn).** Directly tests the masking explanation, and
+   would show whether the arxiv effect grows as the gold-label anchor weakens.
 3. **A direct mechanism test.** Restrict to nodes where the teacher is wrong and the
    student was right, then ask whether the student moved to the *teacher's specific
    label*. This keys on the teacher's own predictions, so it sidesteps both the
@@ -570,7 +651,9 @@ md(r"""
 
 **Runs behind this report:** 54 cells on 7 datasets (3 arms × 3 seeds on the four WebKB
 configs, 2 arms × 3 seeds on cora/citeseer/pubmed), zero failures, 10.4 h; plus arxiv
-published/seed0 at 12.1 h. The arxiv α=0 control was still running when this was written.
+published/seed0 (12.1 h) and its α=β=0 control (58.2 h — inflated by an orphaned run
+sharing the GPU, see A10). A damaged arxiv `published/seed1` archive was discarded
+rather than counted as a second seed (A10).
 
 GLEM's pred files carry no iteration index for `em_iter >= 0`, so each step overwrote the
 previous side's logits in place. The instrument archives every write under an

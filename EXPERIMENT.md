@@ -320,6 +320,53 @@ have one. Embeddings are therefore computed for every dataset the same way
 **mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
 the choice changes no value — it only makes provenance uniform.
 
+**A10 (2026-08-07) — arxiv control completed; it does NOT reproduce the E-step
+pattern. Two bookkeeping corrections.**
+
+*Result.* With `arxiv alpha0_li_T seed0` finished (58.2 h), the `gnn->lm` comparison
+is:
+
+| arm | NCS, in-bias (high hom.) | NCS, out-of-bias (low hom.) | gap |
+|---|---|---|---|
+| published | **+0.0142** | **+0.0054** | **−0.0089** |
+| α=β=0 control | −0.0230 | −0.0229 | **+0.0001** |
+
+The control is **flat across the axis** (gap ≈ 1e-4) while the published arm is
+differentiated. Corruption per corruptible node is 5.79× out-of-bias in the published
+arm against 2.77× in the control. This is the **first and only** cell in the experiment
+where §11's disqualifier does *not* fire — on cora and pubmed the control matched or
+exceeded the published arm, and here it does not.
+
+On substance this satisfies **Weakly supported**: NCS positive throughout, significantly
+lower out-of-bias (McNemar p=4.9e-6), teacher accuracy degrading across the axis
+(0.957 → 0.581), and the pattern absent from the control. It remains scored **no test**
+because A7's single seed makes §10's across-seed stability vacuous. That gate is not
+waived retroactively.
+
+The `lm->gnn` direction on arxiv behaves like the other seven datasets: published gap
++0.0031 (wrong sign for the hypothesis), and the corruption-concentration ratio is
+4.86× published against 5.08× control — disqualifier fires.
+
+*Correction 1 — A9's limitation does not apply to the E-step.* A9 stated the control is
+a clean single-variable ablation only at WebKB's iteration-0 M-step. That is right for
+the `lm->gnn` direction, where the GNN's input features are LM embeddings. It is **wrong
+for `gnn->lm`**: the LM student's inputs are its own text tokens, and the only channel
+from the GNN teacher is the pseudo-label file. At α=0 the LM's training is therefore
+entirely independent of the GNN, so the E-step control is a clean ablation of the
+pseudo-label term **on every dataset**, arxiv included. This strengthens the result
+above rather than qualifying it.
+
+*Correction 2 — a damaged `published/seed1` archive was discarded.* The `pkill` used to
+stop the arxiv sweep killed the queue's bash loop but not its already-exec'd child, so
+that run continued for two further days *concurrently with the control*, sharing GPU 0 —
+which is the previously unexplained 3.5× slowdown (4.52 s/it against ~1.3 s/it), now
+accounted for. The cleanup step had already deleted that run's directory underneath it
+at 20:15, so its `iter-1` baselines were lost and only later files were recreated. It
+could have contributed iteration 1 alone; counting it as a second seed would have
+manufactured a stability test it cannot support, and would have let arxiv escape A7's
+gate on damaged data. Discarded. Concurrency affected wall-clock only, not results:
+the runs write to disjoint archive and `glem_cfg_str` paths.
+
 **A9 (2026-08-04) — the α=β=0 control is a minimal one-variable ablation only at
 the iteration-0 M-step of the GNN-first configs.** §8 already recorded that no arm
 is teacher-free, because the GNN's input features are always the LM's embeddings.

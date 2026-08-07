@@ -250,9 +250,11 @@ def main():
 
     pd.DataFrame(all_rows).to_csv(out / 'ncs_long.csv', index=False)
     pd.DataFrame(all_quads).to_csv(out / 'quadrants.csv', index=False)
-    if all_notes:
-        (out / 'analysis_notes.txt').write_text('\n'.join(str(n) for n in all_notes) + '\n')
-        print(f'{len(all_notes)} note(s) -> analysis_notes.txt')
+    # Written unconditionally: a notes file left over from a previous run would
+    # otherwise look like a warning about the current one.
+    (out / 'analysis_notes.txt').write_text(
+        ('\n'.join(str(n) for n in all_notes) + '\n') if all_notes else 'no issues\n')
+    print(f'{len(all_notes)} note(s) -> analysis_notes.txt')
     print(f'wrote {out}/ncs_long.csv ({len(all_rows)} rows), quadrants.csv ({len(all_quads)} rows)')
 
 
