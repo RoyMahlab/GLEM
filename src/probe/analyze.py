@@ -97,6 +97,30 @@ def median_bins(values, idx):
     return {'low': lo, 'high': hi}
 
 
+def mean_bins(values, idx):
+    """``{'low': ids, 'high': ids}`` split at the mean instead of the median.
+
+    Exploratory only (EXPERIMENT.md amendment A11), emitted under
+    ``bin_scheme='mean'`` and **never** consumed by ``report.py``, which filters on
+    ``bin_scheme == 'median'``. The verdict is therefore protected structurally.
+
+    Exists because local homophily carries a large tie mass at exactly 1.0 on the
+    citation graphs, which the median lands on and §5's tie rule then sweeps into a
+    single bin (A6). The mean sits off that mass and stays usable — but switching
+    the primary statistic after seeing that would be exactly what §11 forbids.
+    """
+    v = values[idx]
+    finite = np.isfinite(v)
+    idx, v = idx[finite], v[finite]
+    if len(idx) == 0:
+        return {}
+    mu = float(v.mean())
+    lo, hi = idx[v <= mu], idx[v > mu]
+    if len(lo) == 0 or len(hi) == 0:
+        return {}
+    return {'low': lo, 'high': hi}
+
+
 def quantile_bins(values, idx, nbins=5):
     """Quantile bins tolerant of heavy ties (local homophily is very discrete).
 
@@ -188,7 +212,9 @@ def analyze_run(run_dir, cache_dir):
                                          ('student', student_sig, student_name),
                                          ('teacher_soft', soft_sig, 'glance_soft_homophily')):
             for scheme, bins in (('median', median_bins(values, idx)),
-                                 ('q5', quantile_bins(values, idx))):
+                                 ('q5', quantile_bins(values, idx)),
+                                 # exploratory only; report.py never reads these (A11)
+                                 ('mean', mean_bins(values, idx))):
                 for bname, bidx in bins.items():
                     s = bin_stats(before, after, teacher, labels, bidx)
                     if s is None:

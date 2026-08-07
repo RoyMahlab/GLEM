@@ -654,6 +654,82 @@ exists in this design.**
 """)
 
 md(r"""
+## 8a. Sensitivity: what a **mean** split would have shown (exploratory — A11)
+
+§5 made the median the primary split, and A6 showed that choice cost three datasets:
+local homophily has a large tie mass at exactly 1.0 on the citation graphs, the median
+lands *on* it, and §5's tie rule (`v <= median` → low) sweeps everything into one bin. A
+mean split sits off the tie mass and stays usable.
+
+So: was the null an artifact of the binning statistic? This runs the same pipeline under
+`bin_scheme='mean'`, which makes the E-step testable on cora, citeseer and pubmed for the
+first time.
+
+**This cannot change any verdict.** §11 says verbatim *"Do not adjust bins, thresholds,
+or arms to move the result"*, and switching the primary statistic after seeing the median
+degenerate is exactly that. `report.py` filters on `bin_scheme == 'median'`, so the
+verdict is protected structurally, not merely by discipline. Reported because *"would an
+equally defensible preregistered choice have shown something else?"* is a fair question
+about a null.
+""")
+
+co(r"""
+from scipy.stats import binomtest
+
+sens = ncs[(ncs.axis == 'teacher') & (ncs.direction == 'gnn->lm')
+           & (ncs.bin_scheme == 'mean') & (~ncs.low_n_flag)]
+out = []
+for ds, g in sens.groupby('dataset'):
+    for arm, ga in g.groupby('arm'):
+        a, b = ga[ga['bin'] == 'low'], ga[ga['bin'] == 'high']   # low = teacher out-of-bias
+        if a.empty or b.empty:
+            continue
+        C, X = int(a.corrections.sum()), int(a.corruptions.sum())
+        seeds = ga.seed.nunique()
+        signs = np.sign(a.groupby('seed').ncs.mean().values)
+        out.append({'dataset': ds.split('_')[0], 'arm': arm, 'n_oob': int(a.n.sum()),
+                    'NCS_oob': a.ncs.mean(), 'NCS_in': b.ncs.mean(),
+                    'gap': a.ncs.mean() - b.ncs.mean(),
+                    'tacc_in': b.teacher_acc.mean(), 'tacc_oob': a.teacher_acc.mean(),
+                    # p tests whether the out-of-bias bin's own NCS differs from 0,
+                    # NOT whether the gap does.
+                    'p_oob': binomtest(C, C + X, 0.5).pvalue if C + X else np.nan,
+                    'seeds': seeds,
+                    'sign_stable': bool(seeds > 1 and len(set(signs[signs != 0])) <= 1)})
+sens_df = pd.DataFrame(out).sort_values(['dataset', 'arm'])
+print('E-step (GNN teaches LM) under a MEAN split — teacher out-of-bias = low homophily')
+print('gap < 0 = harm concentrated where the teacher is out of bias (the hypothesis)')
+print(sens_df.round(4).to_string(index=False))
+""")
+
+md(r"""
+**The mean split does not rescue the hypothesis, and it does not overturn arxiv.**
+
+On the three datasets it newly makes testable, the published arm gives:
+
+- **cora** — gap **+0.0098**, the *wrong* sign, sign-unstable across 3 seeds, p = 0.74.
+- **pubmed** — gap −0.0015, sign-unstable, p = 0.84 — and its control shows a *larger*
+  same-signed gap (−0.0050), so the disqualifier fires.
+- **citeseer** — gap −0.0196, the right sign, but p = 0.83, sign-unstable, and its
+  control is same-signed (−0.0067).
+
+None would reach **Weakly supported** even if the mean had been the preregistered
+primary. So A6's degeneracy did not hide a positive result — it hid three more nulls.
+
+**arxiv is robust to the choice.** Its gap goes from −0.0089 (median) to **−0.0121**
+(mean), and its control flips to *+0.0029* — still not reproducing the pattern. The one
+cell where the hypothesis survives its control survives this too, slightly strengthened.
+
+Two things to read carefully. `p_oob` tests whether the out-of-bias bin's own NCS differs
+from zero, **not** whether the gap does — no gap-level test is preregistered. And note the
+control's NCS is strongly negative throughout (cora −0.12 to −0.16, citeseer −0.04,
+pubmed −0.006): retraining the LM on gold alone *degrades* it substantially, while the
+published arm sits near zero. The pseudo-label term is doing a great deal of good overall
+on the E-step — the hypothesis was only ever about whether that good is unevenly
+distributed along the teacher's competence axis.
+""")
+
+md(r"""
 ## 9. Figures
 
 Per-dataset panels (correction/corruption bars, NCS line, teacher accuracy on the

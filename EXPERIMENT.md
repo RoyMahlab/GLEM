@@ -320,6 +320,42 @@ have one. Embeddings are therefore computed for every dataset the same way
 **mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
 the choice changes no value — it only makes provenance uniform.
 
+**A11 (2026-08-07) — exploratory, post-hoc: mean-split sensitivity analysis.
+Excluded from the §11 verdict.** Written before the results were computed.
+
+§5 made the **median** the primary split. Local homophily turns out to be heavily
+left-skewed on the citation graphs (skew −1.73 cora, −1.50 pubmed, −0.96 citeseer)
+with a large tie mass at exactly 1.0. The median lands *on* that tie mass, and §5's
+tie rule (`v <= median` → low) then sweeps the whole population into one bin — A6.
+A **mean** split sits off the tie mass and stays usable:
+
+| dataset | median split | mean split |
+|---|---|---|
+| cora | 1084 / **0** (degenerate) | 334 / 750 |
+| citeseer | 116 / **0** (degenerate) | 43 / 73 |
+| pubmed | 7887 / **0** (degenerate) | 2182 / 5705 |
+| arxiv | 39216 / 39186 | 34474 / 43928 |
+
+For kNN ambiguity the two are near-identical (skew 0.16–0.25 on the large datasets;
+identical counts on arxiv and pubmed), so this affects the E-step direction only.
+
+**This analysis does not and cannot change any verdict.** §11 states verbatim: *"Do
+not adjust bins, thresholds, or arms to move the result."* Switching the primary
+statistic after observing that the median degenerated — in a way that restores three
+datasets to testability — is the exact researcher degree of freedom preregistration
+removes. The legitimate remedy for A6 was the quantile fallback §5 had already
+preregistered for this discreteness, and that remains what the verdict rests on.
+
+It is run and reported because *"what would a different, equally defensible
+preregistered choice have shown?"* is a fair question about the robustness of a null,
+and because burying the answer would be worse than reporting it under a label. Rows
+are emitted with `bin_scheme='mean'`; `report.py` filters on `bin_scheme=='median'`,
+so the verdict is protected structurally rather than by discipline alone.
+
+The design lesson for any future preregistration: a median split is the **worst**
+choice for a signal with a large tie mass at an extreme. §5 saw the discreteness
+clearly enough to preregister a quantile fallback, yet still made the median primary.
+
 **A10 (2026-08-07) — arxiv control completed; it does NOT reproduce the E-step
 pattern. Two bookkeeping corrections.**
 
