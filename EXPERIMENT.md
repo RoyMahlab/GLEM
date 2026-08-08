@@ -320,6 +320,62 @@ have one. Embeddings are therefore computed for every dataset the same way
 **mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
 the choice changes no value — it only makes provenance uniform.
 
+**A14 (2026-08-08) — new exploratory arms `oracle` and `oracle_random`: the ceiling
+on per-node gating. Excluded from the §11 verdict.**
+
+§11 asked whether uniform α *harms* an identifiable population. It does not — the
+teacher stays better than the student even where it is weakest (§7 analysis). These
+arms answer the complementary question the null raises: **if the teacher's wrong
+labels could be removed perfectly, how much accuracy would that buy?**
+
+`oracle` restricts the pseudo-label set to nodes where the teacher's argmax equals
+the gold label. It uses ground truth, so it is an upper bound rather than a method —
+it bounds every realisable gate, including GLEM's own `pl_filter` confidence
+filtering and any per-node α predicted from exogenous signals.
+
+`oracle_random` drops the same *number* of pseudo-labels uniformly at random. It is
+not optional: the oracle removes ~23% of the pseudo-label set on arxiv, so
+oracle-vs-published would confound "removed wrong labels" with "trained on less
+pseudo-data". **The interpretable comparison is oracle vs oracle_random.** Matching
+is within-run, not across-run — each arm sizes its cut from its own teacher's error
+count, so the two agree at the first step and drift afterwards as trajectories
+diverge (cornell: 44/44 at step 1, 56 vs 47 by step 2). Forcing identical counts
+would require piping one run's numbers into the other.
+
+Neither arm is a control in §11's sense — both carry published pseudo-label weights,
+and `report.py` selects the published arm by exact string match with
+`CONTROL_ARMS = ('alpha0_li_T', 'alpha0_li_F')`, so both are structurally invisible
+to the verdict. Post-hoc, added after seeing the null, and reported as such.
+
+Interpretation fixed in advance: a large oracle gain over `oracle_random` means
+per-node gating has headroom and the exogenous signals are worth building on
+(homophily predicts GNN teacher error at AUROC 0.845 on arxiv's E-step, against
+0.785 for the teacher's own confidence). A negligible gain means uniform α is
+near-optimal — which would be a substantive finding in its own right, and one the
+§7 relative-margin analysis already predicts.
+
+**A13 (2026-08-08) — WebKB re-run on RevGAT as a parallel set, not a replacement.**
+The study was split by backbone: cora/citeseer/pubmed/arxiv on RevGAT, the four
+WebKB sets on GCN, because those were the configs in `configs/glem/` at the outset.
+That is clean *within* a dataset — every arm shares its dataset's backbone, so no
+§11 verdict is affected — but it confounds cross-dataset comparison with six other
+hyperparameters (`em_order`, α, β, `pl_filter`, `lm_pl_ratio`, `gnn_label_input`).
+
+The four WebKB configs have now also been run under RevGAT (`cornell.sh` etc.,
+2 arms × 3 seeds). **This resolves A4.** The RevGAT recipe uses `lm_pl_ratio=1`
+rather than 0.1, so the E-step population rises from 6–11 nodes to **71–101**, and
+the `gnn->lm` direction clears §5's n ≥ 30 floor on heterophilous datasets for the
+first time — the direction where the GNN-as-teacher failure was most predicted and
+which A4/A6 had left untestable everywhere except arxiv.
+
+These runs are archived under `<dataset>+revgat` (see `probe.context.variant`) and
+are therefore treated by `report.py` as **distinct datasets**. That is deliberate:
+they are a parallel set enabling a same-graph GCN-vs-RevGAT contrast, not a
+replacement for the GCN runs, which remain the basis of the existing WebKB verdicts
+and of the A12 feature-channel ablation (impossible under RevGAT, whose configs set
+`gnn_label_input=F`). Any headline count must therefore state which backbone it
+refers to, or it double-counts four datasets.
+
 **A12 (2026-08-08) — new exploratory arm `published_li_F`: the feature-concatenation
 channel removed *alone*. Excluded from the §11 verdict.**
 
