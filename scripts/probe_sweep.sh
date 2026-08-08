@@ -85,6 +85,11 @@ cell_done() {
   local ds arm=$2 seed=$3
   # shellcheck disable=SC1090
   ds=$(. "$ROOT/configs/glem/$1.sh" >/dev/null 2>&1; echo "$DATASET_STR")
+  # Must include the variant suffix, or a config sharing a DATASET_STR with an
+  # already-run one (cornell RevGAT vs cornell_gcn) is judged complete on the
+  # other backbone's archive and silently skipped.
+  local tag="${VARIANT[$1]:-}"
+  [ -n "$tag" ] && ds="$ds+$tag"
   local f="$ROOT/temp/probe_output/$ds/standard/$arm/seed$seed/steps.jsonl"
   [ -s "$f" ] && [ "$(grep -c . "$f")" -eq 4 ]
 }
