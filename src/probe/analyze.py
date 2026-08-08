@@ -156,6 +156,13 @@ def analyze_run(run_dir, cache_dir):
         return [], [], f'{run_dir}: steps.jsonl empty'
 
     meta = steps[0]
+    # Label rows by the archive's dataset DIRECTORY, which carries the variant
+    # suffix (cornell_TAG+revgat), not by the step record's cf.dataset, which does
+    # not. Without this the GCN and RevGAT runs of the same graph collapse onto one
+    # dataset key and their verdicts are computed over a mix of backbones -- the
+    # exact pooling amendment A13 forbids. Signals are still looked up by the base
+    # name, since the graph and its per-node signals are identical either way.
+    ds_label = run_dir.parts[-4]
     sig = sig_mod.signals_for_run(run_dir, meta['dataset'], meta['regime'],
                                   meta['seed'], cache_dir)
     labels = sig['labels']
@@ -203,6 +210,7 @@ def analyze_run(run_dir, cache_dir):
         base = {k: st[k] for k in ('arm', 'seed', 'dataset', 'regime', 'em_iter',
                                    'step_index', 'em_phase', 'direction',
                                    'teacher', 'student', 'pl_weight')}
+        base['dataset'] = ds_label
         base['label_regime'] = base.pop('regime')
         base['iteration'] = base.pop('em_iter')
         base['step'] = base.pop('em_phase')
