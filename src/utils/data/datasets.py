@@ -103,6 +103,12 @@ class SeqGraph():
                     print(f'Detected processed data, LOCAL_RANK #{cf.local_rank} start loading!')
                     time.sleep(5)  # Wait for file write for 5 seconds
                     self.pl_nodes = pickle_load(temp_file)
+            # Oracle / random-control gate on the pseudo-label set. Placed after
+            # pl_filter so it composes with GLEM's own confidence filter rather
+            # than replacing it. No-op unless GLEM_PROBE_GATE is set.
+            from probe import apply_gate
+            self.pl_nodes, self._probe_gate_info = apply_gate(
+                self.pl_nodes, self.ndata['pseudo_labels'], self.ndata['labels'], cf.seed)
         self.device = cf.device  # if cf.local_rank<0 else th.device(cf.local_rank)
 
         return self

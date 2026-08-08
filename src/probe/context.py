@@ -15,6 +15,7 @@ ENV_DIR = 'GLEM_PROBE_DIR'
 ENV_ARM = 'GLEM_PROBE_ARM'
 ENV_REGIME = 'GLEM_PROBE_REGIME'
 ENV_VARIANT = 'GLEM_PROBE_VARIANT'
+ENV_GATE = 'GLEM_PROBE_GATE'
 
 #: Arms defined by EXPERIMENT.md section 8. ``published`` is Arm 1; the two
 #: ``alpha0_*`` arms are Arm 2a / 2b, differing only in ``gnn_label_input``.
@@ -66,6 +67,14 @@ def path_suffix(seed) -> str:
     """
     k = fewshot_k()
     return '' if k is None else f'_fs{k}_s{seed}'
+
+
+def gate() -> str:
+    """Active pseudo-label gate: ``oracle``, ``random``, or ``''`` for none.
+
+    See ``probe.gating``. Empty by default, so ungated runs are unaffected.
+    """
+    return os.environ.get(ENV_GATE, '').strip()
 
 
 def variant() -> str:

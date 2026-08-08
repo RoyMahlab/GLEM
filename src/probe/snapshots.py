@@ -208,6 +208,7 @@ def record_step(cf, pl_node_ids, teacher_file=None, extra=None) -> None:
         'pl_weight': float(getattr(cf, 'pl_weight', float('nan'))),
         'pl_ratio': float(getattr(cf, 'pl_ratio', float('nan'))),
         'pl_filter': str(getattr(cf, 'pl_filter', '')),
+        'gate': context.gate(),
         'label_input': str(getattr(cf, 'label_input', '')),
         'is_augmented': bool(getattr(cf, 'is_augmented', False)),
         'pseudo_label_file': str(getattr(cf, 'pseudo_label_file', '')),

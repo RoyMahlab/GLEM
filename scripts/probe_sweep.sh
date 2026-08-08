@@ -35,21 +35,21 @@ mkdir -p "$LOG_DIR"
 # the teacher's y_hat into GNN input features; the RevGAT configs already set F,
 # so 2a and 2b coincide there and only one control is run (section 8).
 declare -A ARMS=(
-  [cornell_gcn]="published alpha0_li_T alpha0_li_F published_li_F"
-  [texas_gcn]="published alpha0_li_T alpha0_li_F published_li_F"
-  [washington_gcn]="published alpha0_li_T alpha0_li_F published_li_F"
-  [wisconsin_gcn]="published alpha0_li_T alpha0_li_F published_li_F"
-  [cora]="published alpha0_li_T"
-  [citeseer]="published alpha0_li_T"
-  [pubmed]="published alpha0_li_T"
-  [arxiv]="published alpha0_li_T"
+  [cornell_gcn]="published alpha0_li_T alpha0_li_F published_li_F oracle oracle_random"
+  [texas_gcn]="published alpha0_li_T alpha0_li_F published_li_F oracle oracle_random"
+  [washington_gcn]="published alpha0_li_T alpha0_li_F published_li_F oracle oracle_random"
+  [wisconsin_gcn]="published alpha0_li_T alpha0_li_F published_li_F oracle oracle_random"
+  [cora]="published alpha0_li_T oracle oracle_random"
+  [citeseer]="published alpha0_li_T oracle oracle_random"
+  [pubmed]="published alpha0_li_T oracle oracle_random"
+  [arxiv]="published alpha0_li_T oracle oracle_random"
   # RevGAT on the WebKB sets. These configs set gnn_label_input=F, so 2a/2b
   # coincide and published_li_F would equal published -- two arms only, as for
   # the other RevGAT datasets.
-  [cornell]="published alpha0_li_T"
-  [texas]="published alpha0_li_T"
-  [washington]="published alpha0_li_T"
-  [wisconsin]="published alpha0_li_T"
+  [cornell]="published alpha0_li_T oracle oracle_random"
+  [texas]="published alpha0_li_T oracle oracle_random"
+  [washington]="published alpha0_li_T oracle oracle_random"
+  [wisconsin]="published alpha0_li_T oracle oracle_random"
 )
 
 # Configs whose DATASET_STR collides with another config's. The tag is appended

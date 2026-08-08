@@ -45,6 +45,16 @@ case "$ARM" in
     # the GNN's input features. Isolates the feature channel alone; only differs from
     # 'published' on configs that set gnn_label_input=T (the four WebKB ones).
     ARM_ARGS="--gnn_label_input=F" ;;
+  oracle)
+    # Published hyperparameters, but the pseudo-label set is restricted to nodes
+    # the teacher gets RIGHT. Uses ground truth, so it is an upper bound on any
+    # per-node gate, not a deployable method. See src/probe/gating.py.
+    ARM_ARGS=""; export GLEM_PROBE_GATE=oracle ;;
+  oracle_random)
+    # Size-matched control: drops the same NUMBER of pseudo-labels at random.
+    # Without it, oracle-vs-published confounds 'removed wrong labels' with
+    # 'trained on less pseudo-data'. Compare oracle against THIS, not published.
+    ARM_ARGS=""; export GLEM_PROBE_GATE=random ;;
   *)
     echo "unknown arm: $ARM" >&2; exit 2 ;;
 esac
@@ -56,6 +66,8 @@ export GLEM_PROBE_REGIME="$REGIME"
 # cornell_gcn.sh GCN both use cornell_TAG). Empty unless the caller sets it,
 # so existing archive paths are untouched.
 export GLEM_PROBE_VARIANT="${GLEM_PROBE_VARIANT:-}"
+# Set by the oracle arms above; empty for every other arm.
+export GLEM_PROBE_GATE="${GLEM_PROBE_GATE:-}"
 
 echo "=== probe: $DATASET_STR arm=$ARM regime=$REGIME seed=$SEED -> $PROBE_DIR"
 # shellcheck disable=SC2086
