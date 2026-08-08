@@ -320,6 +320,37 @@ have one. Embeddings are therefore computed for every dataset the same way
 **mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
 the choice changes no value — it only makes provenance uniform.
 
+**A12 (2026-08-08) — new exploratory arm `published_li_F`: the feature-concatenation
+channel removed *alone*. Excluded from the §11 verdict.**
+
+§8 defined three arms, which leave one cell of a 2×2 unfilled. The LM teacher reaches
+the GNN student by two removable routes — the pseudo-label CE term (weighted by β) and
+the concatenation of the teacher's `y_hat` onto the GNN's **input features**
+(`datasets.py::node_feature`, gated by `gnn_label_input`):
+
+| | `label_input=T` | `label_input=F` |
+|---|---|---|
+| **published β** | `published` (Arm 1) | **`published_li_F`** (this amendment) |
+| **β = 0** | `alpha0_li_T` (2a) | `alpha0_li_F` (2b) |
+
+Existing arms confound the two routes: `alpha0_li_F` removes both at once, so a
+difference between it and `published` cannot be attributed to either. The new arm keeps
+the published α and β and removes only the feature concatenation, which — with the three
+existing arms — makes the design factorial and lets each channel's contribution be read
+off separately.
+
+Scope: meaningful only on the four WebKB configs, the only ones setting
+`gnn_label_input=T`. On arxiv/cora/citeseer/pubmed the setting is already `F`, so this
+arm would be identical to `published` and is not run. It affects only the **M-step**;
+`gnn->lm` events are unchanged, since `label_input` is a GNN-side setting.
+
+**Not a control, and not part of any verdict.** It carries published pseudo-label
+weights, so it cannot serve §11's disqualifier clause — `report.py`'s `CONTROL_ARMS`
+remains `('alpha0_li_T', 'alpha0_li_F')` and its published-arm selection is an exact
+match on `'published'`, so this arm is structurally invisible to the verdict. It is an
+exploratory ablation added after the fact, at the experiment owner's request, and is
+reported as such.
+
 **A11 (2026-08-07) — exploratory, post-hoc: mean-split sensitivity analysis.
 Excluded from the §11 verdict.** Written before the results were computed.
 

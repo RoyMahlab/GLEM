@@ -14,10 +14,14 @@ from pathlib import Path
 ENV_DIR = 'GLEM_PROBE_DIR'
 ENV_ARM = 'GLEM_PROBE_ARM'
 ENV_REGIME = 'GLEM_PROBE_REGIME'
+ENV_VARIANT = 'GLEM_PROBE_VARIANT'
 
 #: Arms defined by EXPERIMENT.md section 8. ``published`` is Arm 1; the two
 #: ``alpha0_*`` arms are Arm 2a / 2b, differing only in ``gnn_label_input``.
-ARMS = ('published', 'alpha0_li_T', 'alpha0_li_F')
+#: ``published_li_F`` is the exploratory fourth cell of that 2x2 (amendment A12):
+#: published pseudo-label weights, feature concatenation removed. It is NOT a
+#: control -- ``report.py`` treats only the ``alpha0_*`` arms as such.
+ARMS = ('published', 'alpha0_li_T', 'alpha0_li_F', 'published_li_F')
 
 
 def enabled() -> bool:
@@ -64,9 +68,25 @@ def path_suffix(seed) -> str:
     return '' if k is None else f'_fs{k}_s{seed}'
 
 
+def variant() -> str:
+    """Optional suffix distinguishing configurations that share a dataset name.
+
+    The archive is keyed by ``(dataset, regime, arm, seed)``, which has no room
+    for the GNN backbone -- yet ``configs/glem/cornell.sh`` (RevGAT) and
+    ``cornell_gcn.sh`` (GCN) both declare ``DATASET_STR="cornell_TAG"``. Without a
+    discriminator the second would land on the first's archive and
+    ``reset_run_dir`` would delete it.
+
+    Empty by default, so every existing archive path is unchanged; the sweep sets
+    it only for configs that would otherwise collide.
+    """
+    v = os.environ.get(ENV_VARIANT, '').strip()
+    return f'+{v}' if v else ''
+
+
 def run_dir(dataset, seed) -> Path:
     """Directory holding every artefact this run's probe writes."""
-    return root() / str(dataset) / regime() / arm() / f'seed{seed}'
+    return root() / f'{dataset}{variant()}' / regime() / arm() / f'seed{seed}'
 
 
 def is_main_rank(cf) -> bool:

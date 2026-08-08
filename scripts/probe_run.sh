@@ -40,6 +40,11 @@ case "$ARM" in
     # via gnn_label_input=T (utils/data/datasets.py::node_feature). On configs that
     # already set gnn_label_input=F this is identical to 2a -- do not run both.
     ARM_ARGS="--lm_pl_weight=0 --gnn_pl_weight=0 --gnn_label_input=F" ;;
+  published_li_F)
+    # A12: published alpha/beta, but the teacher's y_hat no longer concatenated onto
+    # the GNN's input features. Isolates the feature channel alone; only differs from
+    # 'published' on configs that set gnn_label_input=T (the four WebKB ones).
+    ARM_ARGS="--gnn_label_input=F" ;;
   *)
     echo "unknown arm: $ARM" >&2; exit 2 ;;
 esac
@@ -47,6 +52,10 @@ esac
 export GLEM_PROBE_DIR="$PROBE_DIR"
 export GLEM_PROBE_ARM="$ARM"
 export GLEM_PROBE_REGIME="$REGIME"
+# Distinguishes configs sharing a DATASET_STR (cornell.sh RevGAT vs
+# cornell_gcn.sh GCN both use cornell_TAG). Empty unless the caller sets it,
+# so existing archive paths are untouched.
+export GLEM_PROBE_VARIANT="${GLEM_PROBE_VARIANT:-}"
 
 echo "=== probe: $DATASET_STR arm=$ARM regime=$REGIME seed=$SEED -> $PROBE_DIR"
 # shellcheck disable=SC2086
