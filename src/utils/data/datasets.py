@@ -108,7 +108,7 @@ class SeqGraph():
             # than replacing it. No-op unless GLEM_PROBE_GATE is set.
             from probe import apply_gate
             self.pl_nodes, self._probe_gate_info = apply_gate(
-                self.pl_nodes, self.ndata['pseudo_labels'], self.ndata['labels'], cf.seed)
+                self.pl_nodes, self.ndata['pseudo_labels'], self.ndata['labels'], cf)
         self.device = cf.device  # if cf.local_rank<0 else th.device(cf.local_rank)
 
         return self

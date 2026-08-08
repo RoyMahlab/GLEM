@@ -41,11 +41,20 @@ import numpy as np
 from probe import context
 
 
-def apply_gate(pl_nodes, pseudo_logits, labels, seed):
+def apply_gate(pl_nodes, pseudo_logits, labels, cf):
     """Filter ``pl_nodes`` per the active gate. Returns ``(kept_nodes, info)``.
 
     No-op returning the input unchanged unless ``GLEM_PROBE_GATE`` is set, so an
     ungated run is byte-identical to one from before this module existed.
+
+    Also rewrites ``cf.emi.n_pl_nodes`` to the kept count. That is not optional:
+    ``EmIterInfo.inf_node_ranges`` derives the LM's per-iteration window from
+    ``n_pl_nodes``, which is fixed at config time from the *ungated* set. Leaving it
+    stale makes the window overrun the shortened array, wrap into the second copy
+    made by ``np.tile`` in ``get_inf_aug_train_ids``, and trip its duplicate
+    assertion. GLEM's own ``pl_filter`` scales the same field for the same reason
+    (``GLEM_utils.EmIterInfo.__init__``), so this mirrors existing behaviour rather
+    than inventing it.
 
     Deterministic on every rank: the oracle mask is a pure function of the teacher's
     logits, and the random subset is drawn from a generator seeded by the run seed.
@@ -68,10 +77,14 @@ def apply_gate(pl_nodes, pseudo_logits, labels, seed):
         kept = pl_nodes[correct]
     elif mode == 'random':
         # Same count as the oracle would keep, chosen without regard to correctness.
-        rng = np.random.default_rng(int(seed))
+        rng = np.random.default_rng(int(cf.seed))
         kept = np.sort(rng.choice(pl_nodes, size=n_keep, replace=False))
     else:
         raise ValueError(f'unknown GLEM_PROBE_GATE={mode!r}; expected oracle|random')
+
+    emi = getattr(cf, 'emi', None)
+    if emi is not None:
+        emi.n_pl_nodes = int(len(kept))
 
     info = {'gate': mode, 'n_before': int(len(pl_nodes)), 'n_kept': int(len(kept)),
             'teacher_acc_on_pl': float(correct.mean())}
