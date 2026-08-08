@@ -180,16 +180,25 @@ for ds in ['arxiv', 'cora', 'citeseer', 'pubmed', 'cornell', 'texas', 'washingto
     # Entropy is >= 0 by definition; the +1e-12 smoothing in the entropy sum lands
     # one-hot neighbourhoods at ~-1e-12. Clip that float noise for display only.
     a = np.clip(a, 0.0, None)
+    skew = lambda x: float(((x - x.mean()) ** 3).mean() / (x.std() ** 3 + 1e-12))
     rows.append({'dataset': ds,
-                 'hom_median': np.median(hf), 'hom_frac_at_1.0': (hf == 1.0).mean(),
+                 'hom_median': np.median(hf), 'hom_mean': hf.mean(), 'hom_skew': skew(hf),
+                 'hom_frac_at_1.0': (hf == 1.0).mean(),
                  'hom_q25': np.quantile(hf, .25), 'hom_q75': np.quantile(hf, .75),
                  'isolated': int(np.isnan(h).sum()),
-                 'amb_median': np.nanmedian(a), 'amb_q25': np.nanquantile(a, .25),
-                 'amb_q75': np.nanquantile(a, .75)})
+                 'amb_median': np.nanmedian(a), 'amb_mean': np.nanmean(a),
+                 'amb_skew': skew(a[np.isfinite(a)]),
+                 'amb_q25': np.nanquantile(a, .25), 'amb_q75': np.nanquantile(a, .75)})
 sig = pd.DataFrame(rows).round(3)
 # A median split needs the median strictly inside the range, or one side is empty.
 sig['hom_median_split_usable'] = sig['hom_median'] < 1.0
-print(sig.to_string(index=False))
+sig['hom_mean_split_usable'] = sig['hom_mean'] < 1.0
+print('Signal distributions. mean vs median matters only where the signal is skewed:')
+print(sig[['dataset', 'hom_median', 'hom_mean', 'hom_skew', 'hom_frac_at_1.0',
+           'hom_median_split_usable', 'hom_mean_split_usable']].to_string(index=False))
+print()
+print(sig[['dataset', 'amb_median', 'amb_mean', 'amb_skew', 'amb_q25', 'amb_q75',
+           'isolated']].to_string(index=False))
 """)
 
 md(r"""
@@ -278,16 +287,27 @@ for run in sorted(PROBE.glob('*/standard/published/seed0')):
         fin = np.isfinite(v)                              # isolated nodes -> NaN homophily
         v = v[fin]
         med = float(np.median(v)) if len(v) else np.nan
+        mu = float(v.mean()) if len(v) else np.nan          # A11 companion
         n_lo, n_hi = int((v <= med).sum()), int((v > med).sum())
+        m_lo, m_hi = int((v <= mu).sum()), int((v > mu).sum())
         edges = np.unique(np.quantile(v, np.linspace(0, 1, 6))) if len(v) else np.array([])
         rows.append({'dataset': key, 'direction': direction, 'signal': sname, 'oob_bin': oob,
                      'pop_n': len(idx), 'dropped_nan': int((~fin).sum()), 'median': round(med, 3),
                      'n_low': n_lo, 'n_high': n_hi,
                      'median_usable': n_lo > 0 and n_hi > 0,
                      'min_bin_n': min(n_lo, n_hi), 'meets_n>=30': min(n_lo, n_hi) >= 30,
-                     'q5_bins_realised': max(len(edges) - 1, 0)})
-print('Realised bins — first step of each direction, published arm, seed 0:')
-print(pd.DataFrame(rows).to_string(index=False))
+                     'q5_bins_realised': max(len(edges) - 1, 0),
+                     'mean': round(mu, 3), 'mean_n_low': m_lo, 'mean_n_high': m_hi,
+                     'mean_usable': m_lo > 0 and m_hi > 0})
+bins_df = pd.DataFrame(rows)
+print('Realised bins (PRIMARY, median split) — first step of each direction, published, seed 0:')
+print(bins_df[['dataset', 'direction', 'signal', 'oob_bin', 'pop_n', 'dropped_nan',
+               'median', 'n_low', 'n_high', 'median_usable', 'min_bin_n',
+               'meets_n>=30', 'q5_bins_realised']].to_string(index=False))
+print()
+print('Same populations under a MEAN split (exploratory companion, A11 — not the verdict):')
+print(bins_df[['dataset', 'direction', 'signal', 'median', 'median_usable',
+               'mean', 'mean_n_low', 'mean_n_high', 'mean_usable']].to_string(index=False))
 """)
 
 md(r"""
@@ -344,6 +364,26 @@ print('Teacher accuracy, in-bias vs out-of-bias (published arm, n>=30 bins only)
 print(piv.round(4).to_string())
 """)
 
+co(r"""
+# Companion: the same check under the MEAN split (A11). Descriptive only -- teacher
+# accuracy is a property of the teacher and the bin, not a verdict quantity, so this
+# is safe to show; report.py still reads only bin_scheme == 'median'.
+tm = teacher_rows[(teacher_rows.bin_scheme == 'mean') & (teacher_rows.arm == 'published')
+                  & (~teacher_rows.low_n_flag)]
+gm = (tm.groupby(['direction', 'dataset', 'bin'])
+      .agg(n=('n', 'sum'), teacher_acc=('teacher_acc', 'mean')).reset_index())
+gm['role'] = np.where([b == OOB[d] for d, b in zip(gm.direction, gm['bin'])],
+                      'OUT-OF-BIAS', 'in-bias')
+pm = gm.pivot_table(index=['direction', 'dataset'], columns='role', values='teacher_acc')
+pm['degradation'] = (pm['in-bias'] - pm['OUT-OF-BIAS']).round(4)
+print('Teacher accuracy under the MEAN split (companion to the median table above):')
+print(pm.round(4).to_string())
+print()
+print('Rows the mean split adds that the median split could not test (A6):')
+med_idx = set(piv.index)
+print([f'{d}/{s_.split("_")[0]}' for d, s_ in pm.index if (d, s_) not in med_idx])
+""")
+
 md(r"""
 **The axis works.** Teacher accuracy drops on the out-of-bias side of every dataset
 with a functioning teacher — most dramatically on arxiv's E-step, where the GNN teacher
@@ -376,16 +416,65 @@ as unstable rather than as a result (§10).
 """)
 
 co(r"""
-show = verdicts[['dataset', 'direction', 'oob_bin', 'published_n_oob', 'published_ncs_oob',
-                 'published_ncs_in', 'published_ncs_gap', 'published_sign_stable',
-                 'published_p_oob', 'verdict']].copy()
+show = verdicts[['dataset', 'direction', 'oob_bin', 'published_n_per_step',
+                 'published_n_per_step_min', 'published_n_per_step_max',
+                 'published_seeds', 'published_iters', 'published_ncs_oob',
+                 'published_ncs_oob_sd', 'published_ncs_in', 'published_ncs_gap',
+                 'published_sign_stable', 'published_p_oob', 'verdict']].copy()
 show['dataset'] = show.dataset.str.split('_').str[0]
-print(show.sort_values(['direction', 'dataset']).round(4).to_string(index=False))
+# NCS reported as mean +- across-seed sd, per section 10. NaN sd = single seed.
+# '-' where the cell was never tested, rather than a formatted NaN.
+show['NCS_oob'] = ['-' if pd.isna(m) else f'{m:+.4f}' + ('' if pd.isna(sd) else f' +- {sd:.4f}')
+                   for m, sd in zip(show.published_ncs_oob, show.published_ncs_oob_sd)]
+show['n_per_step'] = ['-' if pd.isna(lo) else (f'{lo:.0f}' if lo == hi else f'{lo:.0f}-{hi:.0f}')
+                      for lo, hi in zip(show.published_n_per_step_min, show.published_n_per_step_max)]
+print(show[['dataset', 'direction', 'oob_bin', 'n_per_step', 'published_seeds',
+            'published_iters', 'NCS_oob', 'published_ncs_in', 'published_ncs_gap',
+            'published_sign_stable', 'published_p_oob', 'verdict']]
+      .sort_values(['direction', 'dataset']).round(4).to_string(index=False))
 print('\n--- verdict counts ---')
 print(verdicts.verdict.value_counts().to_string())
 print('\n--- why each cell was not tested ---')
 for _, r in verdicts[verdicts.verdict == 'no test'].iterrows():
     print(f"  {r.dataset.split('_')[0]:11s} {r.direction:8s}  {r.reason[:110]}")
+""")
+
+co(r"""
+# Exploratory companion (A11): the SAME rule applied to MEAN-split bins.
+# report.py's main() never does this -- verdicts.csv is always the preregistered
+# median result -- so nothing here can alter the verdict above.
+import sys
+sys.path.insert(0, str(ROOT / 'src'))
+from probe.report import evaluate
+
+alt = evaluate(ncs, scheme='mean')
+alt_show = alt[['dataset', 'direction', 'published_n_per_step', 'published_seeds',
+                'published_ncs_oob', 'published_ncs_oob_sd',
+                'published_ncs_in', 'published_ncs_gap', 'published_sign_stable',
+                'published_p_oob', 'verdict']].copy()
+alt_show['dataset'] = alt_show.dataset.str.split('_').str[0]
+print('EXPLORATORY — §11 rule on MEAN-split bins. NOT the verdict (A11):')
+print(alt_show.sort_values(['direction', 'dataset']).round(4).to_string(index=False))
+print()
+print('counts under mean :', dict(alt.verdict.value_counts()))
+print('counts under median:', dict(verdicts.verdict.value_counts()), ' <- the preregistered verdict')
+""")
+
+md(r"""
+**What the mean-split companion changes, and what it does not.**
+
+It converts two `no test` cells into `not supported` — cora and pubmed on the E-step,
+which the median split could not bin at all (A6). Neither becomes supportive: cora's gap
+runs the wrong way and pubmed's control reproduces its gap at larger magnitude. citeseer
+gains a testable E-step too.
+
+**Nothing moves toward the hypothesis.** No cell reaches Supported or Weakly supported
+under either binning, and arxiv stays `no test` under both, because the single-seed gate
+(A7) is a property of the run rather than of the bins. So the null is not an artifact of
+§5's choice of statistic — which is the only question this companion was run to answer.
+
+`report.py`'s `main()` never passes `scheme`, so `verdicts.csv` on disk is always the
+preregistered median result; the counts printed above make the comparison explicit.
 """)
 
 md(r"""

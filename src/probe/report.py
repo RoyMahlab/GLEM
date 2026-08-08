@@ -56,10 +56,18 @@ def sign_stability(sub):
     return float(frac), bool(abs(signs.sum()) == len(signs)), per_seed
 
 
-def evaluate(d):
-    """One verdict row per (dataset, direction), plus the evidence behind it."""
+def evaluate(d, scheme='median'):
+    """One verdict row per (dataset, direction), plus the evidence behind it.
+
+    ``scheme`` selects the binning the rule is applied to. It defaults to
+    ``'median'``, the only scheme §5 preregistered as primary, and ``main()`` never
+    passes anything else -- so ``verdicts.csv`` is always the preregistered result.
+    Other values are for the exploratory companions only (A11): a verdict computed
+    on a non-preregistered binning is not a verdict, and must be labelled as such
+    wherever it is shown.
+    """
     rows = []
-    gated = d[(d.axis == 'teacher') & (d.bin_scheme == 'median') & (~d.low_n_flag)]
+    gated = d[(d.axis == 'teacher') & (d.bin_scheme == scheme) & (~d.low_n_flag)]
 
     # Emit an explicit 'no test' row for every (dataset, direction) that exists in
     # the data but has no rows left after the §5/§10 gates. Grouping only over
@@ -72,12 +80,12 @@ def evaluate(d):
         if (ds, direction) in survivors:
             continue
         raw = d[(d.axis == 'teacher') & (d.dataset == ds) & (d.direction == direction)
-                & (d.bin_scheme == 'median')]
+                & (d.bin_scheme == scheme)]
         if raw.empty:
-            why = ('median split degenerate: one bin empty, so there is no contrast '
-                   'to test (see amendment A6)')
+            why = (f'{scheme} split degenerate: one bin empty, so there is no contrast '
+                   f'to test (see amendment A6)')
         else:
-            why = (f'every median bin flagged n<30 (max n={int(raw.n.max())}); '
+            why = (f'every {scheme} bin flagged n<30 (max n={int(raw.n.max())}); '
                    f'excluded from the verdict by §5')
         rows.append({'dataset': ds, 'direction': direction,
                      'oob_bin': OUT_OF_BIAS[direction], 'verdict': 'no test',
@@ -96,12 +104,24 @@ def evaluate(d):
                 continue
             f_oob, stable_oob, per_seed = sign_stability(a)
             rec.update({
-                f'{arm_label}_n_oob': int(a.n.sum()),
-                f'{arm_label}_n_in': int(b.n.sum()),
-                f'{arm_label}_ncs_oob': a.ncs.mean(),
-                f'{arm_label}_ncs_in': b.ncs.mean(),
-                f'{arm_label}_ncs_gap': a.ncs.mean() - b.ncs.mean(),
-                f'{arm_label}_ncs_oob_sd': a.ncs.std(),
+                # n per *distillation event*, which is the real unit: a node in this
+                # bin is measured once per (seed, iteration). Summing those gives
+                # node-observations, not nodes, and reads as far more independent
+                # evidence than exists -- so the summed figure is kept but named
+                # honestly, and the per-step range is what the table shows.
+                f'{arm_label}_n_per_step': float(a.n.mean()),
+                f'{arm_label}_n_per_step_min': int(a.n.min()),
+                f'{arm_label}_n_per_step_max': int(a.n.max()),
+                f'{arm_label}_n_obs': int(a.n.sum()),
+                f'{arm_label}_n_in_per_step': float(b.n.mean()),
+                f'{arm_label}_ncs_oob': per_seed.mean(),
+                f'{arm_label}_ncs_in': b.groupby('seed').ncs.mean().mean(),
+                f'{arm_label}_ncs_gap': per_seed.mean() - b.groupby('seed').ncs.mean().mean(),
+                # §10 asks for across-SEED variance. Averaging within a seed first
+                # keeps iteration-to-iteration wobble out of the seed spread. NaN at
+                # one seed, which is the honest reading rather than a spurious 0.
+                f'{arm_label}_ncs_oob_sd': per_seed.std(),
+                f'{arm_label}_iters': int(a.iteration.nunique()),
                 f'{arm_label}_seeds': len(per_seed),
                 f'{arm_label}_sign_frac': f_oob,
                 f'{arm_label}_sign_stable': stable_oob,
@@ -124,6 +144,25 @@ def _verdict(r):
     ncs_oob, gap = r['published_ncs_oob'], r['published_ncs_gap']
     stable, p = r['published_sign_stable'], r['published_p_oob']
     tacc_degrades = r['published_tacc_oob'] < r['published_tacc_in']
+
+    # §10 requires the NCS sign to be stable *across seeds*. With a single seed
+    # that test is vacuous -- one sign trivially agrees with itself -- so a
+    # single-seed cell must not be able to reach Supported or Weakly supported no
+    # matter how large its effect or how small its p-value. arxiv is deliberately
+    # single-seed (A7), so without this guard it would report a verdict its own
+    # amendment says it cannot support.
+    if r.get('published_seeds', 0) < 2:
+        return 'no test', (f"only {r.get('published_seeds', 0)} seed: §10 across-seed sign "
+                           f"stability cannot be evaluated (see amendment A7). "
+                           f"Descriptively: NCS {ncs_oob:+.4f} out-of-bias vs "
+                           f"{r['published_ncs_in']:+.4f} in-bias, gap {gap:+.4f}, "
+                           f"teacher acc {r['published_tacc_in']:.3f}->{r['published_tacc_oob']:.3f}")
+
+    # §11's disqualifier needs the control to exist. Absent it, the pattern cannot
+    # be attributed to the pseudo-label term rather than to retraining churn.
+    if r.get('control_status') != 'ok':
+        return 'no test', ('no alpha=beta=0 control available for this cell, so §11\'s '
+                           'control clause cannot be evaluated')
 
     # Does the control reproduce the same directional pattern? §11's disqualifier.
     ctrl_same = (r.get('control_status') == 'ok'
@@ -273,7 +312,8 @@ def main():
     v = evaluate(d)
     v.to_csv(out / 'verdicts.csv', index=False)
 
-    cols = ['dataset', 'direction', 'oob_bin', 'published_n_oob', 'published_ncs_oob',
+    cols = ['dataset', 'direction', 'oob_bin', 'published_n_per_step', 'published_seeds',
+            'published_iters', 'published_ncs_oob', 'published_ncs_oob_sd',
             'published_ncs_in', 'published_ncs_gap', 'published_sign_stable',
             'published_p_oob', 'published_tacc_oob', 'published_tacc_in',
             'control_ncs_gap', 'verdict', 'reason']
