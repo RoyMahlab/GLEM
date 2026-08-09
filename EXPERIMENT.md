@@ -320,50 +320,55 @@ have one. Embeddings are therefore computed for every dataset the same way
 **mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
 the choice changes no value — it only makes provenance uniform.
 
-**A15 (2026-08-09) — the oracle arm is contaminated by transductive label leakage;
-its headline gain is largely an artifact. Reported, not discarded.**
+**A15 (2026-08-09) — CORRECTED. An earlier version of this entry claimed the
+oracle arm was invalidated by "transductive label leakage". That claim was wrong
+and is withdrawn; what follows replaces it.**
 
-A14's oracle keeps pseudo-label nodes where the teacher's argmax equals the gold
-label. Those nodes are drawn from the unlabeled set, which transductively **is**
-val ∪ test — so every node the oracle keeps is trained with its own correct label,
-and is then evaluated. A transductive model can memorise them. I designed the arm
-without anticipating this; the flaw is in the design, not in the runs.
+*Why the original claim was wrong.* GLEM is transductive: the unlabeled set it
+pseudo-labels **is** val ∪ test, and training a student on pseudo-labels for
+evaluation nodes is the method, not contamination. The `published` arm does exactly
+this, and so would any deployable gate. All three arms are trained and evaluated the
+same way, so oracle-vs-`oracle_random` is a fair comparison and its gain is a real
+answer to "what would perfect gating buy in this setting?". Calling the mechanism
+that makes gating work an artifact was a category error on my part.
 
-Measured leakage is severe: the fraction of the **test set** trained with a correct
-label in the oracle arm is 0.85–0.92 on cora, **0.96** on pubmed, 0.63–0.94 on the
-WebKB sets, and 0.04–0.24 on citeseer (low only because its teacher is near chance).
+*What is actually true, and is the ordinary oracle caveat.* The oracle **selects**
+using gold labels — selection quality AUROC 1.0 — while a deployable gate must
+*predict* teacher correctness. Measured selection precision, i.e. the fraction of
+kept nodes the teacher is right on, at the same keep-count the oracle uses:
 
-Decomposing the oracle-vs-random test-accuracy gain into the nodes the gate kept
-(leaked) and those it did not (the honest residual):
+| dataset | direction | random (base) | homophily | confidence | both | oracle |
+|---|---|---|---|---|---|---|
+| cora | gnn→lm | 0.896 | 0.942 | 0.938 | 0.949 | 1.000 |
+| pubmed | gnn→lm | 0.947 | 0.956 | 0.968 | 0.969 | 1.000 |
+| citeseer | gnn→lm | 0.575 | 0.696 | 0.725 | 0.739 | 1.000 |
+| cornell | lm→gnn | 0.680 | 0.824 | 0.897 | 0.926 | 1.000 |
+| wisconsin | lm→gnn | 0.717 | 0.818 | 0.859 | 0.899 | 1.000 |
 
-| dataset | model | kept-node gain | **not-kept gain** | n not-kept |
-|---|---|---|---|---|
-| citeseer | GNN | +0.124 | **−0.026** | 1962 |
-| citeseer | LM | +0.085 | +0.012 | 2468 |
-| cora | GNN | +0.038 | +0.045 | 81 |
-| pubmed | GNN | +0.010 | **−0.014** | 159 |
-| pubmed | LM | +0.010 | +0.010 | 159 |
-| WebKB (all) | both | +0.017…+0.080 | −0.167…+0.187 | **1–9** |
+A realisable gate closes roughly **40–75% of the random→oracle precision gap** —
+substantial, not negligible, and best when confidence and the exogenous signal are
+combined. So the oracle's measured gain (pubmed +0.9pp seed-stable, cora +3.9pp,
+WebKB +7.7 to +10.6pp on tiny test sets) is an upper bound that a real gate would
+partially, not wholly, capture.
 
-The kept-node gain is positive everywhere, as leakage predicts. The residual is
-small, mixed in sign, and on the only three datasets with a usable non-kept count
-it is ≈0 or negative. Every WebKB residual rests on 1–9 nodes and is noise.
+*What the kept/not-kept decomposition does and does not show.* The split is still
+worth reporting, but it means something narrower than originally stated: the benefit
+is **local to the nodes the gate acted on** and does not spill over to nodes it
+excluded (residual ≈ 0 or slightly negative on the three datasets with usable n;
+1–9 nodes on WebKB, i.e. noise). That is expected for transductive gating rather
+than evidence against it.
 
-**Consequences.** The headline "oracle beats the size-matched control by
-+0.9 to +10.6 points" must not be read as headroom for a deployable gate. As an
-upper bound on selection it remains formally valid — no selection rule beats
-selecting exactly the correct labels — but it is **loose**, because most of the
-measured gain is memorised leaked supervision rather than improved learning.
+The not-kept comparison remains the study's cleanest harm test, and its reading is
+unchanged: on nodes where the teacher is **wrong**, the oracle supplies no
+pseudo-label while the control supplies a wrong one, and the oracle does not win
+there. Wrong pseudo-labels are not what damages those nodes.
 
-The residual comparison is nonetheless the cleanest test of the harm hypothesis in
-the whole study, and it is worth stating as such: on nodes where the teacher is
-**wrong**, the oracle supplies no pseudo-label while the random control supplies a
-wrong one. If wrong pseudo-labels harmed the student, the oracle should win there.
-It does not, on the datasets where n is large enough to tell.
-
-A leakage-free version would require holding out an evaluation split that never
-enters the pseudo-label set — a different experiment, not a fix to this one, since
-GLEM pseudo-labels the whole unlabeled set by construction.
+*Net effect on the study's direction.* This is a **positive** result for per-node
+gating, not a null: perfect gating is worth +0.9 to +3.9 points on the datasets with
+meaningful test sets, and exogenous signals plus confidence recover a large share of
+the selection precision needed to chase it. The natural next experiment is a
+realisable gate keyed to `z(homophily) + z(confidence)`, measured against
+`published` and against this oracle ceiling.
 
 **A14 (2026-08-08) — new exploratory arms `oracle` and `oracle_random`: the ceiling
 on per-node gating. Excluded from the §11 verdict.**
