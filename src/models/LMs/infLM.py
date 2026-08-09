@@ -72,6 +72,11 @@ class LmInfTrainer:
         # Archive under an iteration-keyed path before a later E-step overwrites
         # cf.emi.lm.pred in place (see probe/snapshots.py). These logits are the
         # LM's post-E-step state and the GNN's next teacher. No-op when unprobed.
+        # Under torchrun every rank writes its shard into the shared memmap, so
+        # rank 0 must not archive until they have all finished.
+        import torch.distributed as _dist
+        if _dist.is_available() and _dist.is_initialized():
+            _dist.barrier()
         self.pred.flush()
         from probe import archive_pred
         archive_pred(self.cf, self.pred, 'lm')

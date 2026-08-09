@@ -4,6 +4,7 @@
 #   scripts/perfect_teacher_sweep.sh                 # the 7 cheap datasets
 #   scripts/perfect_teacher_sweep.sh arxiv           # named configs only
 #   DRY_RUN=1 scripts/perfect_teacher_sweep.sh       # list cells, train nothing
+#   GPUS=0,1 scripts/perfect_teacher_sweep.sh arxiv  # data-parallel LM steps
 #
 # Runs two arms per cell (EXPERIMENT.md amendment A14):
 #
@@ -51,5 +52,5 @@ for cfg in "${CONFIGS[@]}"; do
 done
 
 echo "=== perfect-teacher sweep (RevGAT): ${CONFIGS[*]}"
-SEEDS="${SEEDS:-0 1 2}" ONLY_ARMS="oracle oracle_random" \
+SEEDS="${SEEDS:-0 1 2}" GPUS="${GPUS:-0}" ONLY_ARMS="oracle oracle_random" \
   exec "$ROOT/scripts/probe_sweep.sh" "${CONFIGS[@]}"

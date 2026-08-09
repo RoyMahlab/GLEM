@@ -27,6 +27,11 @@ ONLY_ARMS=${ONLY_ARMS:-}
 SKIP_DONE=${SKIP_DONE:-0}
 # List the cells that would run, then exit without training.
 DRY_RUN=${DRY_RUN:-0}
+# GPUs handed to each run. A comma list (GPUS=0,1) makes GLEM launch the LM train
+# and inference steps under torchrun with one process per GPU. Runs stay
+# SEQUENTIAL regardless: arms that differ only by an env var share a glem_cfg_str,
+# so two of them at once would overwrite each other's EM working directories.
+GPUS=${GPUS:-0}
 LOG_DIR="$ROOT/logs/probe"
 MANIFEST="$LOG_DIR/manifest.tsv"
 mkdir -p "$LOG_DIR"
@@ -119,7 +124,7 @@ for cfg in "${CONFIGS[@]}"; do
       if [ "$DRY_RUN" = 1 ]; then continue; fi
       t0=$SECONDS
       GLEM_PROBE_VARIANT="${VARIANT[$cfg]:-}" \
-        "$ROOT/scripts/probe_run.sh" "$cfg" "$arm" standard "$seed" --gpus=0 \
+        "$ROOT/scripts/probe_run.sh" "$cfg" "$arm" standard "$seed" --gpus="$GPUS" \
         > "$log" 2>&1
       rc=$?
       # shellcheck disable=SC2317
