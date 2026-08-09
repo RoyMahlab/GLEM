@@ -170,7 +170,11 @@ class LMTrainer():
             record_step(cf, np.intersect1d(np.asarray(train_ids), np.asarray(d.pl_nodes)),
                         teacher_file=getattr(cf, 'pseudo_label_file', None),
                         extra={'n_train_ids': int(len(train_ids)),
-                               'eval_steps': int(eval_steps)})
+                               'eval_steps': int(eval_steps),
+                               # pool sizes before/after the gate. For the LM these
+                               # differ from n_pl_nodes_used whenever the per-iteration
+                               # window is smaller than the gated pool.
+                               **getattr(d, '_probe_gate_info', {})})
         self.trainer.train()
         # ! Save bert
         # self.model.save_pretrained(cf.out_ckpt, self.model.state_dict())

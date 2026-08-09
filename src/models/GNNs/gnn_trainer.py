@@ -137,7 +137,10 @@ class GNNTrainer():
             record_step(self.cf, self._probe_pl_seen,
                         teacher_file=getattr(self.cf, 'pseudo_label_file', None),
                         extra={'epochs_run': epoch + 1,
-                               'best_epoch': None if self.stopper is None else self.stopper.best_epoch})
+                               'best_epoch': None if self.stopper is None else self.stopper.best_epoch,
+                               # pool sizes before/after the gate, distinct from
+                               # n_pl_nodes_used which is what the step sampled
+                               **getattr(self.d, '_probe_gate_info', {})})
         return self.model
 
     @th.no_grad()
