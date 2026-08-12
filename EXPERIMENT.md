@@ -320,6 +320,44 @@ have one. Embeddings are therefore computed for every dataset the same way
 **mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
 the choice changes no value — it only makes provenance uniform.
 
+**A16 (2026-08-09) — new exploratory arms `conf_gate60/80/90`: a *deployable*
+confidence gate, swept over keep-rate. Excluded from the §11 verdict.**
+
+A14's oracle established headroom on arxiv — +3.24pp (GNN) and +4.35pp (LM) over the
+size-matched control, at seed sd 0.0018 and 0.0006. These arms ask how much of it a
+gate that cannot see labels recovers.
+
+No new gating code: they use GLEM's **own** `pl_filter`, which is already a per-node
+confidence gate (`softmax(...).max(1).topk(k)` in `utils/data/datasets.py`). The four
+RevGAT configs and arxiv leave it **unset**, so arxiv has never been run with any
+filter; `0.8` is the value GLEM ships for its GCN recipe.
+
+Justification for confidence rather than a learned mix: measured on arxiv, a
+val-fitted logistic combination of seven deployable features scores AUROC **0.784**
+against confidence alone at **0.784** for the E-step, and 0.796 vs 0.771 for the
+M-step. Confidence is therefore at or near the achievable ceiling on this dataset, so
+the extra machinery would buy ~0.00–0.03 AUROC and add a second thing that could be
+wrong. Confidence also lifts selection precision 0.766 → 0.851, closing ~36% of the
+random→oracle gap.
+
+**Swept, not fixed**, because one operating point cannot distinguish "confidence
+gating does not help" from "this keep-rate is wrong". The three arms bracket the
+oracle's own keep-rate of 0.767 and the val-estimated teacher accuracy (0.768 E-step,
+0.755 M-step).
+
+Interpretation fixed in advance. The existing arms bracket the answer: dropping 23% of
+pseudo-labels *at random* costs **−0.42pp** (0.7699 → 0.7657), and dropping exactly
+the wrong 23% gains **+2.82pp**. A confidence gate must clear the shrinkage cost
+before showing any gain, so ~36% of the precision gap predicts roughly **+0.8pp over
+published** — t ≈ 6 at two seeds. A result near zero at every keep-rate means
+confidence gating cannot exploit the headroom the oracle proves exists, which would
+redirect the work toward signals confidence cannot capture.
+
+Two limits: `pl_filter` applies **one** scalar to both directions, so it cannot take
+the 0.768 / 0.755 split the two teachers want; and these arms carry published α/β, so
+they are not §11 controls — `report.py` matches `published` exactly and treats only
+the `alpha0_*` arms as controls, leaving them structurally invisible to the verdict.
+
 **A15 (2026-08-09) — CORRECTED. An earlier version of this entry claimed the
 oracle arm was invalidated by "transductive label leakage". That claim was wrong
 and is withdrawn; what follows replaces it.**

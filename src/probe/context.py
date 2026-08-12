@@ -22,7 +22,9 @@ ENV_GATE = 'GLEM_PROBE_GATE'
 #: ``published_li_F`` is the exploratory fourth cell of that 2x2 (amendment A12):
 #: published pseudo-label weights, feature concatenation removed. It is NOT a
 #: control -- ``report.py`` treats only the ``alpha0_*`` arms as such.
-ARMS = ('published', 'alpha0_li_T', 'alpha0_li_F', 'published_li_F')
+ARMS = ('published', 'alpha0_li_T', 'alpha0_li_F', 'published_li_F',
+        'oracle', 'oracle_random',
+        'conf_gate60', 'conf_gate80', 'conf_gate90')
 
 
 def enabled() -> bool:

@@ -55,6 +55,14 @@ case "$ARM" in
     # Without it, oracle-vs-published confounds 'removed wrong labels' with
     # 'trained on less pseudo-data'. Compare oracle against THIS, not published.
     ARM_ARGS=""; export GLEM_PROBE_GATE=random ;;
+  conf_gate60|conf_gate80|conf_gate90)
+    # Confidence gate at a fixed keep-rate, using GLEM's OWN pl_filter mechanism:
+    # softmax(...).max(1).topk(k) keeps the k most-confident pseudo-label nodes
+    # (utils/data/datasets.py). arxiv/cora/citeseer/pubmed leave pl_filter unset, so
+    # they run with no gating at all; 0.8 is the value GLEM ships for its GCN recipe.
+    # Swept rather than fixed, because a single operating point cannot distinguish
+    # 'confidence gating does not help' from 'this keep-rate is wrong'.
+    ARM_ARGS="--pl_filter=0.${ARM#conf_gate}" ;;
   *)
     echo "unknown arm: $ARM" >&2; exit 2 ;;
 esac
