@@ -502,6 +502,7 @@ dependencies = [
     { name = "numpy", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nvidia-cublas-cu11", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nvidia-cuda-runtime-cu11", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "nvidia-curand-cu11", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nvidia-cusparse-cu11", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nvidia-htop", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nvidia-ml-py3", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -630,6 +631,7 @@ requires-dist = [
     { name = "numpy", specifier = "==1.19.5" },
     { name = "nvidia-cublas-cu11", specifier = "==11.11.3.6" },
     { name = "nvidia-cuda-runtime-cu11", specifier = "==11.8.89" },
+    { name = "nvidia-curand-cu11", specifier = "==10.2.10.91" },
     { name = "nvidia-cusparse-cu11", specifier = "==11.7.5.86" },
     { name = "nvidia-htop", specifier = "==1.0.5" },
     { name = "nvidia-ml-py3", specifier = "==7.352.0" },
@@ -1148,6 +1150,18 @@ source = { registry = "https://pypi.org/simple" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/45/3e/84db02be49fe6d6df6e42f69fd64501c22d0f9ada9c9877f885612085d20/nvidia_cuda_runtime_cu11-11.8.89-py3-none-manylinux1_x86_64.whl", hash = "sha256:f587bd726eb2f7612cf77ce38a2c1e65cf23251ff49437f6161ce0d647f64f7c", size = 875585, upload-time = "2022-10-03T21:46:03.05Z" },
     { url = "https://files.pythonhosted.org/packages/a6/ec/a540f28b31de7bc1ed49eecc72035d4cb77db88ead1d42f7bfa5ae407ac6/nvidia_cuda_runtime_cu11-11.8.89-py3-none-manylinux2014_x86_64.whl", hash = "sha256:92d04069a987e1fbc9213f8376d265df0f7bb42617d44f5eda1f496acea7f2d1", size = 875592, upload-time = "2024-08-16T23:56:18.774Z" },
+]
+
+[[package]]
+name = "nvidia-curand-cu11"
+version = "10.2.10.91"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "setuptools", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "wheel", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8f/11/af78d54b2420e64a4dd19e704f5bb69dcb5a6a3138b4465d6a48cdf59a21/nvidia_curand_cu11-10.2.10.91-py3-none-manylinux1_x86_64.whl", hash = "sha256:eecb269c970fa599a2660c9232fa46aaccbf90d9170b96c462e13bcb4d129e2c", size = 54628716, upload-time = "2022-08-03T21:13:08.944Z" },
 ]
 
 [[package]]

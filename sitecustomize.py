@@ -1,9 +1,10 @@
 """Expose the CUDA 11 runtime libraries from the `nvidia-*-cu11` wheels to ld.so.
 
-The `ct` conda environment got `libcudart.so.11.0`, `libcublas.so.11` and
-`libcusparse.so.11` from the `cudatoolkit=11.3.1` conda package. Under uv those
-libraries come from the `nvidia-cuda-runtime-cu11`, `nvidia-cublas-cu11` and
-`nvidia-cusparse-cu11` wheels, which unpack into `site-packages/nvidia/*/lib` --
+The `ct` conda environment got `libcudart.so.11.0`, `libcublas.so.11`,
+`libcusparse.so.11` and `libcurand.so.10` from the `cudatoolkit=11.3.1` conda
+package. Under uv those libraries come from the `nvidia-cuda-runtime-cu11`,
+`nvidia-cublas-cu11`, `nvidia-cusparse-cu11` and `nvidia-curand-cu11` wheels,
+which unpack into `site-packages/nvidia/*/lib` --
 a directory the dynamic loader does not search. `dgl_cu111` links against them by
 SONAME and loads its C extension with a bare `ctypes.CDLL("libdgl.so")`, so
 `import dgl` would otherwise die with
@@ -30,6 +31,7 @@ _SONAMES = (
     "libcublasLt.so.11",
     "libcublas.so.11",
     "libcusparse.so.11",
+    "libcurand.so.10",
 )
 
 
