@@ -44,9 +44,9 @@ declare -A ARMS=(
   [texas_gcn]="published alpha0_li_T alpha0_li_F published_li_F oracle oracle_random"
   [washington_gcn]="published alpha0_li_T alpha0_li_F published_li_F oracle oracle_random"
   [wisconsin_gcn]="published alpha0_li_T alpha0_li_F published_li_F oracle oracle_random"
-  [cora]="published alpha0_li_T oracle oracle_random"
-  [citeseer]="published alpha0_li_T oracle oracle_random"
-  [pubmed]="published alpha0_li_T oracle oracle_random"
+  [cora]="published alpha0_li_T oracle oracle_random conf_gate60 conf_gate80 conf_gate90"
+  [citeseer]="published alpha0_li_T oracle oracle_random conf_gate60 conf_gate80 conf_gate90"
+  [pubmed]="published alpha0_li_T oracle oracle_random conf_gate60 conf_gate80 conf_gate90"
   [arxiv]="published alpha0_li_T oracle oracle_random conf_gate60 conf_gate80 conf_gate90"
   # RevGAT on the WebKB sets. These configs set gnn_label_input=F, so 2a/2b
   # coincide and published_li_F would equal published -- two arms only, as for
