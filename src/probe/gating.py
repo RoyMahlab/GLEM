@@ -87,6 +87,11 @@ def _exogenous_score(pl_nodes, pseudo_logits, cf):
         name = 'glance_soft_homophily'
     else:
         # LM teacher fails at HIGH ambiguity -> negate so higher = more trustworthy.
+        # Seed 0's file is used for every seed. Safe under the standard regime:
+        # ambiguity draws its neighbours from the TRAIN split, which does not vary
+        # with seed there, and the per-seed files are byte-identical (verified on
+        # cornell and cora). It would NOT be safe under the few-shot regimes, where
+        # the k-shot draw is seed-dependent -- those are withdrawn (A5).
         amb_f = sig_dir / f'{key}_standard_s0_ambiguity.npy'
         if not amb_f.exists():
             raise FileNotFoundError(
@@ -157,12 +162,20 @@ def apply_gate(pl_nodes, pseudo_logits, labels, cf):
             # `published` would run it. Returning early also leaves emi.n_pl_nodes
             # untouched, which is required -- shrinking it for an ungated step would
             # desynchronise the LM's per-iteration window from the full pl set.
-            print(f'[probe] gate={mode}: {teaching} is teaching, not gated '
-                  f'(this arm fixes {which.upper()} only)')
+            # `correct` is already computed above, so teacher accuracy is recorded
+            # here too. Without it a single-teacher arm has no measurement of the
+            # teacher it deliberately left alone, and the within-run comparison
+            # "gated teacher vs ungated teacher" cannot be made at all.
+            print(f'[probe] gate={mode}: {teaching} is teaching, NOT gated '
+                  f'(this arm fixes {which.upper()} only) -- '
+                  f'pseudo-label nodes {len(pl_nodes)} kept as-is '
+                  f'(teacher accuracy on them {correct.mean():.4f})')
             return pl_nodes, {'gate': mode, 'gate_active': False,
                               'gate_teaching': teaching,
                               'n_before': int(len(pl_nodes)),
-                              'n_kept': int(len(pl_nodes))}
+                              'n_kept': int(len(pl_nodes)),
+                              'teacher_acc_on_pl': float(correct.mean()),
+                              'teacher_acc_on_kept': float(correct.mean())}
 
         frac = int(frac_s) / 100.0
         score, sig_name, teaching = _exogenous_score(pl_nodes, pseudo_logits, cf)
