@@ -320,6 +320,56 @@ have one. Embeddings are therefore computed for every dataset the same way
 **mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
 the choice changes no value — it only makes provenance uniform.
 
+**A18 (2026-08-13) — new exploratory arms `sig_gate80/90`: an exogenous-signal
+gate. Excluded from the §11 verdict.**
+
+A16's confidence gate failed: on arxiv it recovered ~0 of the oracle's +2.82pp (GNN)
+and +3.62pp (LM), against the +0.8pp predicted from selection precision. **That
+prediction was wrong and the reason is diagnostic.** At the oracle keep-rate a
+confidence gate excludes 51% of the teacher's errors but **0.0%** of the
+*confidently wrong* ones — it is structurally blind to them, which is the same
+blindness §7 measured as AUROC 0.925 → 0.628 across the homophily axis. It strips
+the harmless errors and leaves the damaging ones.
+
+These arms test whether an **exogenous** signal reaches the population confidence
+cannot. Measured on arxiv at the oracle keep-rate:
+
+| gate | all errors excluded | **confidently-wrong excluded** |
+|---|---|---|
+| confidence, gnn→lm | 0.516 | **0.000** |
+| homophily, gnn→lm | 0.485 | **0.116** |
+| confidence, lm→gnn | 0.507 | **0.000** |
+| ambiguity, lm→gnn | 0.423 | **0.177** |
+
+Design: keep the top k% by GLANCE soft homophily when the GNN teaches, by inverted
+kNN ambiguity when the LM teaches. Direction is read from `cf.em_phase`, never
+re-derived. Keep-rates **match `conf_gate80/90` exactly**, so the difference between
+the two families isolates the *signal* with shrinkage held constant.
+
+Preflight on arxiv, before any training — the gate does raise kept-set teacher
+accuracy: GNN-teaching 0.767 → 0.833 (+6.6pp) at 80% keep, +3.3pp at 90%;
+LM-teaching 0.755 → 0.805 (+5.0pp) at 80%, +2.6pp at 90%.
+
+**Prediction fixed in advance: +0.3 to +0.5pp over `published`**, from scaling the
+oracle's +2.82pp by the 12–18% of the confidently-wrong population these signals
+reach. At arxiv's seed sd of 0.0018 that is t ≈ 2–3 at three seeds — detectable but
+not comfortable. This is deliberately a more modest claim than A16's, and it is
+grounded in the mechanism that explains A16's failure rather than in selection
+precision, which is now known not to transfer.
+
+**Scope limit found by the smoke test, and it is not incidental.** On cornell
+(RevGAT, global homophily 0.219) the GLANCE gate *lowers* kept-set teacher accuracy
+(−0.050, −0.045) while the ambiguity gate raises it (+0.027, +0.037). GLANCE's sign
+inverts on heterophilous graphs — the same failure that made `nbr_pl_agree` score
+0.35–0.42 AUROC on WebKB. The arms are therefore registered for **arxiv only**.
+Applying them to a heterophilous dataset would gate in exactly the wrong direction,
+and nothing in the current implementation detects that: the sign would have to be
+chosen per (graph, direction), which global homophily alone cannot do.
+
+Not §11 controls — they carry published α/β, and `report.py` matches `published`
+exactly while treating only the `alpha0_*` arms as controls, so they are
+structurally invisible to the verdict.
+
 **A17 (2026-08-13) — §11's control disqualifier: an implementation gap fixed, and
 an ambiguity in the preregistered text resolved on the record.**
 

@@ -33,12 +33,71 @@ Two modes, and the second is not optional:
     wrong: the honest control is "drop as many labels as this run's teacher gets
     wrong, chosen without regard to which ones", and that is what this does.
 
+``signal<k>`` (e.g. ``signal80``)
+    Keep the top ``k%`` of pseudo-label nodes by an **exogenous** signal, chosen by
+    direction: GLANCE soft homophily when the GNN teaches, inverted kNN ambiguity
+    when the LM teaches. Deployable -- neither needs the node's own label.
+
+    Motivation, measured on arxiv (A18): at the oracle keep-rate, a confidence gate
+    excludes 51% of the teacher's errors but **0%** of the *confidently wrong* ones,
+    which is exactly why ``conf_gate`` bought nothing. The exogenous signals exclude
+    a similar share of all errors (42-49%) but **11.6% / 17.7%** of the confidently
+    wrong population that confidence is structurally blind to.
+
 Both modes apply to whichever side is currently the student, since ``SeqGraph.init``
 runs in both the LM and GNN processes.
 """
 import numpy as np
 
 from probe import context
+
+
+def _exogenous_score(pl_nodes, pseudo_logits, cf):
+    """Per-node score for the signal gate; higher = teacher more likely RIGHT.
+
+    Direction is read from ``cf.em_phase`` rather than re-derived: the LM being the
+    student means the **GNN** is teaching, so the axis is local homophily. Getting
+    this inverted would gate on the student's weakness instead of the teacher's,
+    which is the error EXPERIMENT.md section 4 exists to prevent.
+
+    Fails loudly if the cached signal arrays are absent. A silent fallback would
+    degrade the gate invisibly *inside training*, where it could not be caught by
+    inspecting the results afterwards.
+    """
+    import os
+    from pathlib import Path
+
+    key = str(cf.dataset).split('_')[0]
+    sig_dir = Path(os.environ[context.ENV_DIR]) / '_signals'
+    teaching = 'GNN' if cf.em_phase == 'LM' else 'LM'
+
+    p = np.asarray(pseudo_logits, dtype=np.float32)
+    p = np.exp(p - p.max(1, keepdims=True))
+    p /= p.sum(1, keepdims=True)
+
+    if teaching == 'GNN':
+        # GNN teacher fails at LOW homophily -> higher GLANCE = more trustworthy.
+        edge_f = sig_dir / f'{key}_edge_index.npy'
+        if not edge_f.exists():
+            raise FileNotFoundError(
+                f'signal gate needs {edge_f}; generate it by running '
+                f'src/probe/analyze.py on this dataset first')
+        from probe.signals import soft_local_homophily
+        score = soft_local_homophily(np.load(edge_f), p)
+        name = 'glance_soft_homophily'
+    else:
+        # LM teacher fails at HIGH ambiguity -> negate so higher = more trustworthy.
+        amb_f = sig_dir / f'{key}_standard_s0_ambiguity.npy'
+        if not amb_f.exists():
+            raise FileNotFoundError(
+                f'signal gate needs {amb_f}; generate it by running '
+                f'src/probe/analyze.py on this dataset first')
+        score = -np.load(amb_f)
+        name = 'neg_knn_ambiguity'
+
+    score = np.asarray(score, dtype=np.float64)
+    score = np.nan_to_num(score, nan=np.nanmedian(score))   # isolated nodes
+    return score[pl_nodes], name, teaching
 
 
 def apply_gate(pl_nodes, pseudo_logits, labels, cf):
@@ -79,8 +138,18 @@ def apply_gate(pl_nodes, pseudo_logits, labels, cf):
         # Same count as the oracle would keep, chosen without regard to correctness.
         rng = np.random.default_rng(int(cf.seed))
         kept = np.sort(rng.choice(pl_nodes, size=n_keep, replace=False))
+    elif mode.startswith('signal'):
+        # Keep the top k% by the exogenous signal. The keep-rate is fixed by the arm
+        # rather than estimated, so it matches the corresponding conf_gate arm
+        # exactly -- holding shrinkage constant isolates the SIGNAL, which is the
+        # only thing this arm is meant to vary.
+        frac = int(mode[len('signal'):]) / 100.0
+        score, sig_name, teaching = _exogenous_score(pl_nodes, pseudo_logits, cf)
+        n_keep = max(1, int(round(frac * len(pl_nodes))))
+        kept = np.sort(pl_nodes[np.argsort(-score, kind='mergesort')[:n_keep]])
     else:
-        raise ValueError(f'unknown GLEM_PROBE_GATE={mode!r}; expected oracle|random')
+        raise ValueError(
+            f'unknown GLEM_PROBE_GATE={mode!r}; expected oracle|random|signal<k>')
 
     emi = getattr(cf, 'emi', None)
     if emi is not None:
@@ -88,6 +157,13 @@ def apply_gate(pl_nodes, pseudo_logits, labels, cf):
 
     info = {'gate': mode, 'n_before': int(len(pl_nodes)), 'n_kept': int(len(kept)),
             'teacher_acc_on_pl': float(correct.mean())}
+    if mode.startswith('signal'):
+        # teacher_acc_on_kept is diagnostic only -- it uses gold labels, so it is
+        # recorded for the analysis, never consulted by the gate itself.
+        info.update({'gate_signal': sig_name, 'gate_teaching': teaching,
+                     'teacher_acc_on_kept': float(
+                         (np.asarray(pseudo_logits[kept], dtype=np.float32).argmax(1)
+                          == np.asarray(labels)[kept]).mean())})
     print(f'[probe] gate={mode}: pseudo-label nodes {info["n_before"]} -> '
           f'{info["n_kept"]} (teacher accuracy on them {info["teacher_acc_on_pl"]:.4f})')
     return kept, info

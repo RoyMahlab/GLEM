@@ -24,7 +24,8 @@ ENV_GATE = 'GLEM_PROBE_GATE'
 #: control -- ``report.py`` treats only the ``alpha0_*`` arms as such.
 ARMS = ('published', 'alpha0_li_T', 'alpha0_li_F', 'published_li_F',
         'oracle', 'oracle_random',
-        'conf_gate60', 'conf_gate80', 'conf_gate90')
+        'conf_gate60', 'conf_gate80', 'conf_gate90',
+        'sig_gate80', 'sig_gate90')
 
 
 def enabled() -> bool:
