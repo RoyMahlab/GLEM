@@ -64,11 +64,21 @@ case "$ARM" in
     # 'confidence gating does not help' from 'this keep-rate is wrong'.
     ARM_ARGS="--pl_filter=0.${ARM#conf_gate}" ;;
   sig_gate80|sig_gate90)
-    # Exogenous-signal gate (A18): keep the top k% by GLANCE soft homophily when
-    # the GNN teaches, by inverted kNN ambiguity when the LM teaches. Keep-rates
-    # deliberately MATCH conf_gate80/90 so the difference isolates the signal with
-    # shrinkage held fixed. Needs the cached signal arrays -- run analyze.py first.
+    # Exogenous-signal gate (A18), BOTH teachers: keep the top k% by GLANCE soft
+    # homophily when the GNN teaches, by inverted kNN ambiguity when the LM teaches.
+    # Keep-rates deliberately MATCH conf_gate80/90 so the difference isolates the
+    # signal with shrinkage held fixed. Needs the cached signal arrays from
+    # analyze.py, and fails loudly rather than silently degrading if they are absent.
     ARM_ARGS=""; export GLEM_PROBE_GATE="signal${ARM#sig_gate}" ;;
+  sig_gate80_gnn|sig_gate90_gnn)
+    # Fix the GNN teacher ONLY: gate the E-step (GNN teaches the LM), leave the
+    # M-step exactly as published. Isolates how much of the combined arm's effect
+    # comes from cleaning the GNN's pseudo-labels.
+    _k="${ARM#sig_gate}"; ARM_ARGS=""; export GLEM_PROBE_GATE="signal${_k%_gnn}:gnn" ;;
+  sig_gate80_lm|sig_gate90_lm)
+    # Fix the LM teacher ONLY: gate the M-step (LM teaches the GNN), leave the
+    # E-step exactly as published.
+    _k="${ARM#sig_gate}"; ARM_ARGS=""; export GLEM_PROBE_GATE="signal${_k%_lm}:lm" ;;
   *)
     echo "unknown arm: $ARM" >&2; exit 2 ;;
 esac

@@ -346,6 +346,21 @@ kNN ambiguity when the LM teaches. Direction is read from `cf.em_phase`, never
 re-derived. Keep-rates **match `conf_gate80/90` exactly**, so the difference between
 the two families isolates the *signal* with shrinkage held constant.
 
+**Decomposed by teacher into three arms**, so the combined effect can be attributed:
+
+| arm | gates the E-step (GNN teaches) | gates the M-step (LM teaches) |
+|---|---|---|
+| `sig_gate80_gnn` | yes | no — runs exactly as `published` |
+| `sig_gate80_lm` | no | yes |
+| `sig_gate80` | yes | yes |
+
+An ungated step returns early without touching `emi.n_pl_nodes`; shrinking it for a
+step that was not gated would desynchronise the LM's per-iteration window from the
+full pseudo-label set, which is the failure mode already recorded for the oracle arm.
+`sig_gate80` is the sum of the two single-teacher arms only if the effects are
+additive, which is itself worth testing — the EM loop couples the two steps, so a
+teacher cleaned at one step changes what the other teacher sees at the next.
+
 Preflight on arxiv, before any training — the gate does raise kept-set teacher
 accuracy: GNN-teaching 0.767 → 0.833 (+6.6pp) at 80% keep, +3.3pp at 90%;
 LM-teaching 0.755 → 0.805 (+5.0pp) at 80%, +2.6pp at 90%.

@@ -25,7 +25,9 @@ ENV_GATE = 'GLEM_PROBE_GATE'
 ARMS = ('published', 'alpha0_li_T', 'alpha0_li_F', 'published_li_F',
         'oracle', 'oracle_random',
         'conf_gate60', 'conf_gate80', 'conf_gate90',
-        'sig_gate80', 'sig_gate90')
+        'sig_gate80', 'sig_gate90',
+        'sig_gate80_gnn', 'sig_gate80_lm',
+        'sig_gate90_gnn', 'sig_gate90_lm')
 
 
 def enabled() -> bool:

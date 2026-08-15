@@ -139,11 +139,32 @@ def apply_gate(pl_nodes, pseudo_logits, labels, cf):
         rng = np.random.default_rng(int(cf.seed))
         kept = np.sort(rng.choice(pl_nodes, size=n_keep, replace=False))
     elif mode.startswith('signal'):
-        # Keep the top k% by the exogenous signal. The keep-rate is fixed by the arm
-        # rather than estimated, so it matches the corresponding conf_gate arm
-        # exactly -- holding shrinkage constant isolates the SIGNAL, which is the
-        # only thing this arm is meant to vary.
-        frac = int(mode[len('signal'):]) / 100.0
+        # ``signal<k>``        gate every step   -- fix BOTH teachers
+        # ``signal<k>:gnn``    gate only when the GNN teaches -- fix the GNN teacher
+        # ``signal<k>:lm``     gate only when the LM teaches  -- fix the LM teacher
+        #
+        # The three arms decompose the effect by teacher. `cf.em_phase` names the
+        # STUDENT, so the teacher is the other model: em_phase == 'LM' means the GNN
+        # is teaching. Reading it this way rather than re-deriving keeps the
+        # direction from silently inverting (EXPERIMENT.md section 4).
+        spec = mode[len('signal'):]
+        frac_s, _, which = spec.partition(':')
+        which = (which or 'both').lower()
+        teaching = 'GNN' if cf.em_phase == 'LM' else 'LM'
+
+        if which != 'both' and which != teaching.lower():
+            # This step's teacher is not the one this arm fixes: leave it exactly as
+            # `published` would run it. Returning early also leaves emi.n_pl_nodes
+            # untouched, which is required -- shrinking it for an ungated step would
+            # desynchronise the LM's per-iteration window from the full pl set.
+            print(f'[probe] gate={mode}: {teaching} is teaching, not gated '
+                  f'(this arm fixes {which.upper()} only)')
+            return pl_nodes, {'gate': mode, 'gate_active': False,
+                              'gate_teaching': teaching,
+                              'n_before': int(len(pl_nodes)),
+                              'n_kept': int(len(pl_nodes))}
+
+        frac = int(frac_s) / 100.0
         score, sig_name, teaching = _exogenous_score(pl_nodes, pseudo_logits, cf)
         n_keep = max(1, int(round(frac * len(pl_nodes))))
         kept = np.sort(pl_nodes[np.argsort(-score, kind='mergesort')[:n_keep]])
@@ -158,6 +179,7 @@ def apply_gate(pl_nodes, pseudo_logits, labels, cf):
     info = {'gate': mode, 'n_before': int(len(pl_nodes)), 'n_kept': int(len(kept)),
             'teacher_acc_on_pl': float(correct.mean())}
     if mode.startswith('signal'):
+        info['gate_active'] = True
         # teacher_acc_on_kept is diagnostic only -- it uses gold labels, so it is
         # recorded for the analysis, never consulted by the gate itself.
         info.update({'gate_signal': sig_name, 'gate_teaching': teaching,
