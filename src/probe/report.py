@@ -131,6 +131,24 @@ def evaluate(d, scheme='median'):
                 f'{arm_label}_status': 'ok',
             })
 
+        # Per-seed stability of the GAP itself. `{arm}_sign_stable` above is the
+        # stability of NCS *within the out-of-bias bin*, a different quantity: on
+        # arxiv the control's bin NCS is stably negative while its gap flips sign
+        # twice. §11's disqualifier is about the gap, so it needs this.
+        for arm_label, arm_sel in (('published', grp[grp.arm == 'published']),
+                                   ('control', grp[grp.arm.isin(CONTROL_ARMS)])):
+            aa = arm_sel[arm_sel['bin'] == oob]
+            bb = arm_sel[arm_sel['bin'] != oob]
+            if len(aa) == 0 or len(bb) == 0:
+                continue
+            per_seed_gap = (aa.groupby('seed').ncs.mean()
+                            - bb.groupby('seed').ncs.mean()).dropna()
+            rec[f'{arm_label}_gap_sd'] = float(per_seed_gap.std())
+            sg = np.sign(per_seed_gap.values)
+            sg = sg[sg != 0]
+            rec[f'{arm_label}_gap_sign_stable'] = bool(
+                len(sg) > 1 and abs(sg.sum()) == len(sg))
+
         rec['verdict'], rec['reason'] = _verdict(rec)
         rows.append(rec)
     return pd.DataFrame(rows)
@@ -164,9 +182,20 @@ def _verdict(r):
         return 'no test', ('no alpha=beta=0 control available for this cell, so §11\'s '
                            'control clause cannot be evaluated')
 
-    # Does the control reproduce the same directional pattern? §11's disqualifier.
+    # §11's disqualifier: "the same pattern appears in the alpha=beta=0 control".
+    # §11 never defined "same pattern" quantitatively and the two readings diverge on
+    # arxiv, so the choice is stated rather than left implicit (amendment A17).
+    #
+    # Matching the SIGN of the mean gap alone would let an unstable control veto a
+    # stable published effect: arxiv's control gaps are +0.0001 / +0.0103 / -0.0169 --
+    # scatter about zero whose mean happens to land negative -- against a published
+    # gap of -0.0089 / -0.0121 / -0.0114. A rule discarding a result on that basis
+    # would reject almost any true effect, and §10 already makes across-seed sign
+    # stability this study's standard for "real". So the control must reproduce the
+    # pattern *stably* to disqualify.
     ctrl_same = (r.get('control_status') == 'ok'
-                 and np.sign(r.get('control_ncs_gap', np.nan)) == np.sign(gap))
+                 and np.sign(r.get('control_ncs_gap', np.nan)) == np.sign(gap)
+                 and bool(r.get('control_gap_sign_stable', False)))
 
     if ncs_oob < 0 and stable and p < 0.05 and r['published_ncs_in'] > 0:
         if ctrl_same:
@@ -175,6 +204,13 @@ def _verdict(r):
         return 'supported', 'NCS significantly negative out-of-bias, positive elsewhere, absent in control'
 
     if r['published_ncs_oob'] > 0 and r['published_ncs_in'] > 0 and gap < 0 and stable and tacc_degrades:
+        # §11's control clause is a general disqualifier ("... OR the same pattern
+        # appears in the control"), not one attached only to Supported. It was
+        # previously consulted for Supported alone -- an implementation gap against
+        # the preregistered text, fixed here.
+        if ctrl_same:
+            return 'not supported', ('NCS lower out-of-bias, but the control '
+                                     'reproduces the same gap stably')
         return 'weakly supported', 'NCS positive throughout but lower out-of-bias, teacher accuracy degrading'
 
     if not stable:

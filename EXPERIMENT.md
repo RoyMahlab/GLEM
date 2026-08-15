@@ -320,6 +320,52 @@ have one. Embeddings are therefore computed for every dataset the same way
 **mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
 the choice changes no value — it only makes provenance uniform.
 
+**A17 (2026-08-13) — §11's control disqualifier: an implementation gap fixed, and
+an ambiguity in the preregistered text resolved on the record.**
+
+Two distinct problems, found while arxiv's E-step became scoreable at three seeds.
+
+*The implementation gap.* §11 states the disqualifier generally — "Not supported —
+NCS is flat across the axis, **or** the same pattern appears in the α=β=0 control."
+`report.py` consulted the control only inside the **Supported** branch; the
+**Weakly supported** branch never checked it. That is a straightforward mismatch
+against the preregistered text and is fixed: the weak clause now applies the same
+disqualifier.
+
+*The ambiguity.* §11 never defined what "the same pattern appears in the control"
+means quantitatively, and on arxiv the readings diverge:
+
+| arm | per-seed gap | mean | sd |
+|---|---|---|---|
+| published | −0.0089 / −0.0121 / −0.0114 | **−0.0108** | **0.0017** |
+| α=β=0 control | +0.0001 / +0.0103 / −0.0169 | −0.0022 | **0.0137** |
+
+Matching only the **sign of the mean** disqualifies the result. Requiring the
+control to reproduce the pattern **stably** does not, because the control's gap
+flips sign twice.
+
+Resolved in favour of the stability reading, with the reasoning stated because the
+choice was made after seeing the data. A disqualifier that fires on an unstable,
+sign-flipping control would reject almost any true effect — the control's mean is
+negative only because three values scattered about zero happen to average that way —
+and §10 already establishes across-seed sign stability as this study's standard for
+whether an effect is real. Applying a weaker standard to the control than to the
+published arm would be incoherent.
+
+The strict sign-only reading is disclosed rather than buried: under it, arxiv
+`gnn->lm` would be **not supported** instead of **weakly supported**, and the study
+would contain no positive verdict. Readers preferring that convention should read it
+that way.
+
+*A third defect fixed in passing.* The existing `{arm}_sign_stable` column measures
+stability of NCS **within the out-of-bias bin**, not of the **gap**. On arxiv the
+control's bin NCS is stably negative (−0.0229 / −0.0163 / −0.0387) while its gap
+flips — so the disqualifier had no correct quantity available to test. Per-seed gap
+stability is now computed as `{arm}_gap_sign_stable`, with `{arm}_gap_sd` alongside.
+
+*Effect on the verdicts:* none besides making the rule match its text. Counts remain
+13 not supported, 10 no test, **1 weakly supported** (arxiv `gnn->lm`).
+
 **A16 (2026-08-09) — new exploratory arms `conf_gate60/80/90`: a *deployable*
 confidence gate, swept over keep-rate. Excluded from the §11 verdict.**
 
