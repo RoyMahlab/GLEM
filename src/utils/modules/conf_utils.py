@@ -90,6 +90,20 @@ class ModelConfig(metaclass=ABCMeta):
         # Turn off Wandb gradients loggings
         os.environ["WANDB_WATCH"] = "false"
 
+        # Only the top-level GLEM orchestrator logs to wandb. Its per-phase
+        # subprocesses (LM/GNN training & inference) run as separate processes;
+        # if each called wandb.init it would spawn its own run, fragmenting a
+        # single training across ~15 runs (wandb can't merge them by name/id
+        # reliably across processes). Keep everything in the one GLEM run — the
+        # orchestrator reads each phase's result from disk and logs it itself.
+        if self.model != 'GLEM':
+            os.environ["WANDB_DISABLED"] = "true"
+            return None
+        # Idempotent within the process: _final_report calls wandb_init again to
+        # write the final summary; don't open a second run for the same training.
+        if getattr(self, '_wandb_run_active', False):
+            return None
+
         wandb_settings_given = self.wandb_name != 'OFF' or self.wandb_id != ''
         not_parallel = self.local_rank <= 0
 
@@ -99,23 +113,14 @@ class ModelConfig(metaclass=ABCMeta):
                 from private.exp_settings import WANDB_API_KEY, WANDB_DIR, WANDB_PROJ, WANDB_ENTITY
                 os.environ['WANDB_API_KEY'] = WANDB_API_KEY
 
-                # ! Create wandb session
-                if self.wandb_id == '':
-                    # First time running, create new wandb.
-                    # Group runs by dataset name; name each run by its seed.
-                    # job_type keeps the GLEM sub-runs (LM/GNN/EM phases, tagged
-                    # via wandb_name) distinguishable within a dataset+seed group.
-                    wandb.init(project=WANDB_PROJ, entity=WANDB_ENTITY, reinit=True,
-                               config=self.model_conf,
-                               group=self.dataset.split('_')[0],
-                               name=str(self.seed),
-                               job_type=str(self.wandb_name))
-                    self.wandb_id = wandb.run.id
-                else:
-                    print(f'Resume from previous wandb run {self.wandb_id}')
-                    wandb.init(project=WANDB_PROJ, entity=WANDB_ENTITY, reinit=True,
-                               resume='must', id=self.wandb_id)
+                # One run per (dataset, seed): grouped by dataset name, named by seed.
+                wandb.init(project=WANDB_PROJ, entity=WANDB_ENTITY, reinit=True,
+                           config=self.model_conf,
+                           group=self.dataset.split('_')[0],
+                           name=self.dataset + f'_seed_{self.seed}')
+                self.wandb_id = wandb.run.id
                 self.wandb_on = True
+                self._wandb_run_active = True
             except:
                 return None
         else:
