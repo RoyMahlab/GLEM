@@ -277,6 +277,26 @@ def final_accuracy(probe=PROBE):
     return pd.DataFrame(rows)
 
 acc = final_accuracy()
+
+# --- the oracle across EVERY dataset, paired by seed ---
+w = acc.pivot_table(index=['dataset', 'model', 'seed'], columns='arm', values='test_acc')
+w = w.dropna(subset=['oracle', 'oracle_random'])
+w['gain'] = w['oracle'] - w['oracle_random']
+g = (w.groupby(['dataset', 'model'])
+       .agg(seeds=('gain', 'size'), published=('published', 'mean'),
+            random=('oracle_random', 'mean'), oracle=('oracle', 'mean'),
+            gain=('gain', 'mean'), gain_sd=('gain', 'std')).reset_index())
+# t on the paired per-seed differences. Meaningless where gain_sd is exactly 0,
+# which happens on the 19-26 node WebKB test sets through sheer quantisation.
+g['t'] = np.where(g.gain_sd > 1e-9, g.gain / (g.gain_sd / np.sqrt(g.seeds)), np.nan)
+g['dataset'] = g.dataset.str.replace('_TAG', '', regex=False).str.replace('_TA', '', regex=False)
+print('ORACLE minus size-matched random control, paired by seed, ALL datasets:')
+print(g.round(4).to_string(index=False))
+print()
+print('cells with a positive gain: %d / %d' % ((g.gain > 0).sum(), len(g)))
+print('cells with t > 2         : %d' % (g.t > 2).sum())
+print()
+
 a = acc[acc.dataset == 'arxiv_TA']
 order = ['published', 'oracle_random', 'conf_gate60', 'conf_gate80', 'conf_gate90',
          'sig_gate80_gnn', 'sig_gate80_lm', 'sig_gate80', 'sig_gate90', 'oracle']
@@ -288,16 +308,29 @@ print(out.round(4).to_string())
 """)
 
 md(r"""
-**Perfect gating is worth ~3 points**, and the seed variance is remarkably tight:
+**Perfect gating pays, and not only on arxiv — 17 of 18 cells show a positive
+gain.** Where the test set is large enough to resolve it:
 
-| model | published | oracle_random | oracle | gain over random | sd |
+| dataset | model | random | oracle | gain | t |
 |---|---|---|---|---|---|
-| GNN | 0.7699 | 0.7657 | **0.7981** | **+3.24pp** | 0.0018 |
-| LM | 0.7540 | 0.7468 | **0.7902** | **+4.35pp** | 0.0006 |
+| arxiv | LM | 0.7468 | **0.7902** | **+4.35pp** | **98.3** |
+| arxiv | GNN | 0.7657 | **0.7981** | **+3.24pp** | **25.4** |
+| pubmed | GNN | 0.9517 | 0.9607 | +0.90pp | **6.65** |
+| pubmed | LM | 0.9497 | 0.9597 | +1.00pp | **4.39** |
+| cora | GNN | 0.8801 | 0.9188 | +3.87pp | **3.44** |
 
-Signal-to-noise of 18:1 and 72:1. Note `oracle_random` is *below* published — dropping
-23% of pseudo-labels at random **costs** 0.42pp — so a real gate must clear that
-before showing any gain.
+The remaining cells are positive but underpowered: cora LM (t = 1.74), citeseer LM
+(2.00), and the four WebKB sets, whose 19–26 test nodes cannot resolve anything.
+`wisconsin gnn` reports an absurd t because its `gain_sd` is *exactly* zero — a
+quantisation artifact of 26 test nodes, not precision, and it is masked in the table
+above.
+
+arxiv is nonetheless the cleanest cell by a wide margin: signal-to-noise of 18:1 and
+72:1, against pubmed's 3.8:1 and cora's 2:1. Its tiny seed variance, not its effect
+size, is what makes it the dataset where a *realisable* gate could be measured.
+
+Note `oracle_random` sits *below* published on arxiv — dropping 23% of pseudo-labels
+at random **costs** 0.42pp — so a real gate must clear that before showing any gain.
 
 An earlier version of this analysis dismissed the oracle result as transductive label
 leakage. **That was wrong and is withdrawn (A15):** training a student on
@@ -373,7 +406,9 @@ md(r"""
    wrong label at 1.7–5.8× the retraining baseline.
 4. **It does not net out because the teacher stays better than the student**, even at
    58% accuracy against a 57% student.
-5. **Perfect gating is worth ~3 points** on arxiv, with 18:1 signal-to-noise.
+5. **Perfect gating pays across datasets** — positive on 17 of 18 cells, and
+   significant on arxiv (+3.2 / +4.3pp), pubmed (+0.9 / +1.0pp) and cora (+3.9pp).
+   Headroom is not an arxiv artifact.
 6. **Confidence-based gating captures almost none of it**, because it is blind to the
    confidently-wrong population — a negative result about the standard fix.
 7. **arxiv's E-step is weakly supported** — the one cell where the axis, the power and
