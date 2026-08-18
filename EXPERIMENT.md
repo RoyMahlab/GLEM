@@ -320,6 +320,131 @@ have one. Embeddings are therefore computed for every dataset the same way
 **mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
 the choice changes no value — it only makes provenance uniform.
 
+**A19 (2026-08-16) — new exploratory arms `published_li_T` / `alpha0_li_T_only`:
+the pseudo-label *feature* channel. Post-hoc hypothesis, decision rule fixed before
+the arxiv run. Excluded from the §11 verdict.**
+
+**This hypothesis is post-hoc and is labelled as such.** It was found by slicing
+§13's existing null by `gnn_label_input` *after* those results were known — the
+practice §1 exists to constrain. It is recorded here so that the arxiv test is
+preregistered even though the hypothesis that motivated it is not.
+
+The slice — `published` arm, out-of-bias bin, `lm→gnn` direction, mean over seeds:
+
+| `gnn_label_input` | mean out-of-bias NCS | cells negative |
+|---|---|---|
+| `F` — pseudo-label enters the **loss** only | +0.0047 | 2 / 8 |
+| `T` — loss **and** input features | **−0.0253** | **4 / 4** |
+
+**Three confounds, all present, none separable in the existing data:**
+
+1. every `T` cell is WebKB at n = 23–37 per bin — the regime A4 flagged as
+   underpowered and A13 only partly resolved;
+2. every `T` cell uses GCN and every `F` cell RevGAT — the backbone varies with the
+   channel;
+3. the four `T` configs (`configs/glem/*_gcn.sh`) were written for this study and are
+   untracked. **No upstream GLEM config sets `T`.**
+
+The slice is therefore a lead, not a finding, and it cannot be strengthened by adding
+more datasets of the same kind.
+
+**Mechanism, stated before the test.** `y_hat` is
+`softmax(pseudo_labels / temperature)` with gold one-hots overwriting it on train
+nodes, concatenated onto the GNN's input features
+(`src/utils/data/datasets.py::node_feature`). A wrong pseudo-label in the **loss** is
+one term scaled by β — 0.05 for the M-step on arxiv. A wrong pseudo-label in the
+**features** is read at inference time for that node and enters its representation
+with no such scaling. §13's null is explained by GLEM's asymmetric α/β down-weighting
+the direction in which the teacher is weak (α = 0.50–0.80 for `gnn→lm`, β = 0.05–0.70
+for `lm→gnn`, where the teacher is worse than the student in 12 of 12 cells). The
+feature channel has no equivalent protection. That asymmetry is the reason to expect a
+different answer here, and it is the only reason.
+
+**Not a GLEM idiosyncrasy.** Concatenating predicted labels onto input features is
+*label reuse* — Wang et al., *Bag of Tricks for Node Classification with GNNs* (2021);
+Shi et al., *UniMP: Masked Label Prediction* (IJCAI 2021) — standard practice on
+ogbn-arxiv, from which this study's primary dataset is drawn. `label_input = 'T'` is
+GLEM's own framework default (`src/models/GNNs/gnn_utils.py:32`); every shipped config
+overrides it to `F`. If the effect holds it is a statement about a widely-used
+technique, not about a configuration flag.
+
+**Design.** Registered for **arxiv only**.
+
+| arm | α, β | `gnn_label_input` | role |
+|---|---|---|---|
+| `published` (exists, 3 seeds) | published | F | reference — feature channel **off** |
+| `published_li_T` | published | **T** | treatment — both channels active |
+| `alpha0_li_T_only` | 0, 0 | **T** | attribution — feature channel **alone** |
+
+`published_li_T` against the existing `published` holds dataset, backbone, α, β,
+splits and seeds fixed; `gnn_label_input` is the single manipulated variable, at
+n ≈ 38,800 per bin against the lead's 23–37.
+
+Note that the existing `alpha0_li_T` does **not** force `T` — it inherits the config,
+which is `F` on arxiv — so it is not the control for this arm. `alpha0_li_T_only`
+forces it. The existing arm's semantics are left unchanged so that runs already on
+disk stay correctly labelled.
+
+**Built-in placebo.** `node_feature` is called only at the GNN (M-) step, so this arm
+can only affect `lm→gnn`. The `gnn→lm` direction is an internal negative control: if
+it also shifts, something other than the feature channel changed and the result is
+void.
+
+**Decision rule, fixed before any `li=T` arxiv data is examined.** §11's criteria,
+unchanged, applied to the `lm→gnn` out-of-bias bin of `published_li_T`:
+
+- **Supported** — NCS < 0, two-sided exact McNemar p < 0.01, sign stable across ≥ 3
+  seeds, the gap against `published` negative with stable sign, and `gnn→lm`
+  unchanged.
+- **Weakly supported** — NCS ≥ 0 but the gap against `published` is negative with
+  stable sign, and `gnn→lm` unchanged.
+- **Not supported** — otherwise, including any case where the `gnn→lm` placebo moves.
+
+If supported, `alpha0_li_T_only` then attributes the effect: reproducing it with α=β=0
+shows the feature channel suffices on its own; failing to reproduce it shows the two
+channels interact.
+
+**Prediction fixed in advance: the `lm→gnn` out-of-bias NCS moves from `published`'s
++0.0016 to between −0.008 and 0.000 — a gap of −0.002 to −0.010.** The WebKB lead's
+−0.025 is not the prediction; effect magnitudes on arxiv run an order of magnitude
+smaller than on the 19–26-node sets, and the lead's magnitude is inflated by the same
+quantisation A4 records. At the observed per-seed NCS sd of ~0.001–0.004 a gap of
+−0.005 is resolvable at three seeds.
+
+**Scope of the existing gates, recorded because it is not obvious from their names.**
+`probe.gating.apply_gate` rewrites `self.pl_nodes` only, and `pl_nodes` feeds
+`get_inf_aug_train_ids` — that is, which nodes contribute the pseudo-label CE term.
+The feature channel reads `self.ndata['pseudo_labels']` directly through `y_hat`,
+which never consults `pl_nodes`. **Every gate built for A14/A16/A18 — `oracle`,
+`oracle_random`, `conf_gate*`, `sig_gate*` — therefore filters the loss channel
+alone.** No result already on disk is affected, because every dataset those arms ran
+on ships `gnn_label_input=F` and so has no feature channel at all. But it means a gate
+combined with `li=T` would be **silently incomplete**: a node removed from `pl_nodes`
+still carries the teacher's wrong label in its input features. No arm currently
+combines the two, and none should be added without closing this gap first.
+
+**Contingent follow-up, registered now and deliberately not implemented.** If
+`published_li_T` returns a negative out-of-bias NCS, the matching remedy is to gate
+the *feature* channel — mask `y_hat` to zero (or 1/C) for nodes an exogenous signal
+distrusts, applied identically at training and inference, with node selection reusing
+the cached `_signals/` arrays. This is registered here so that the idea is timestamped
+before the result is known; it is **not** wired, because it requires editing `y_hat`,
+which is on the hot path of every GNN step, and it should not be touched until there
+is a demonstrated effect to remedy.
+
+Its predicted advantage over the A16/A18 loss gates is structural rather than
+empirical, and is stated in advance: every loss gate paid a shrinkage tax —
+`oracle_random` shows that dropping ~24% of pseudo-labels at random costs 0.20pp (GNN)
+and 1.00pp (LM), which is why `conf_gate80` sits at +0.73pp against random yet −0.28pp
+against `published`. A feature mask removes no node from training and no gradient from
+the objective; it removes only the label hint. There is therefore no shrinkage tax to
+overcome. If a feature gate also fails, that absence of a tax removes the last
+available explanation for the A16/A18 nulls.
+
+**Not §11 controls.** Both arms carry a `gnn_label_input` value that `published` does
+not, so `report.py` — which matches `published` exactly and treats only the `alpha0_*`
+arms as controls — leaves the existing verdicts untouched.
+
 **A18 (2026-08-13) — new exploratory arms `sig_gate80/90`: an exogenous-signal
 gate. Excluded from the §11 verdict.**
 

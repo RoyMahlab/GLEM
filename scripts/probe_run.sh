@@ -45,6 +45,18 @@ case "$ARM" in
     # the GNN's input features. Isolates the feature channel alone; only differs from
     # 'published' on configs that set gnn_label_input=T (the four WebKB ones).
     ARM_ARGS="--gnn_label_input=F" ;;
+  published_li_T)
+    # A19: published alpha/beta, but the teacher's y_hat IS concatenated onto the GNN's
+    # input features. The mirror of published_li_F, and the only way to reach the
+    # feature channel on configs that ship gnn_label_input=F (every upstream config).
+    # node_feature() runs only at the M-step, so this can affect lm->gnn alone --
+    # gnn->lm is the built-in placebo.
+    ARM_ARGS="--gnn_label_input=T" ;;
+  alpha0_li_T_only)
+    # A19 attribution arm: pseudo-labels reach the student ONLY through input
+    # features, never through the loss. Note the existing alpha0_li_T does NOT force
+    # T -- it inherits the config, which is F on arxiv -- so it is not this arm.
+    ARM_ARGS="--lm_pl_weight=0 --gnn_pl_weight=0 --gnn_label_input=T" ;;
   oracle)
     # Published hyperparameters, but the pseudo-label set is restricted to nodes
     # the teacher gets RIGHT. Uses ground truth, so it is an upper bound on any
