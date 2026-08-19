@@ -480,9 +480,15 @@ representation **unscaled**. §13's null is explained by GLEM's asymmetric α/β
 the loss channel; the feature channel has no equivalent.
 
 The channel exists in **one direction only** — no LM code path consumes pseudo-labels as
-input — so `gnn→lm` is a built-in placebo. A20 scopes it to **iteration 0**: at
-iteration 1 the E-step's teacher *is* the GNN the M-step just trained, so movement there
-is the mechanism propagating, not leakage.
+input; the language model reads tokenized text and receives pseudo-labels only as loss
+targets. That makes `gnn→lm` a **negative control**: at iteration 0 the manipulation
+*cannot* reach it, so any movement would mean something other than the feature channel
+had changed, and the result would be void.
+
+A20 scopes that control to **iteration 0** for a reason. By iteration 1 the E-step's
+teacher *is* the GNN the M-step degraded, so movement there is not contamination — it is
+the damage propagating around the EM loop, and it is worth measuring rather than
+discarding.
 """)
 
 co(r"""
@@ -490,14 +496,33 @@ AX = {'gnn->lm': 'local_homophily', 'lm->gnn': 'knn_ambiguity'}
 A19 = ['published', 'published_li_T', 'alpha0_li_T', 'alpha0_li_T_only']
 n19 = ncs[(ncs.dataset == 'arxiv_TA') & (ncs.bin_scheme == 'median')]
 
-# --- the placebo: gnn->lm at iteration 0 must not move ---
-pl = n19[(n19.direction == 'gnn->lm') & (n19.signal == AX['gnn->lm'])
-         & (n19.teacher_out_of_bias_bin) & (n19.iteration == 0)]
-print('PLACEBO  gnn->lm, iteration 0 (A20 scoping) -- must be unchanged')
-for arm in A19:
-    per = pl[pl.arm == arm].groupby('seed').ncs.mean()
-    if len(per):
-        print('   %-18s %+.4f  [%s]' % (arm, per.mean(), ', '.join('%+.4f' % v for v in per)))
+# --- gnn->lm, BOTH bins, BOTH iterations.
+# iteration 0 is the placebo: the LM never receives label features, so li=T cannot
+# touch it. iteration 1 is not a placebo -- by then the E-step's teacher IS the GNN
+# the M-step degraded, so any movement there is the damage propagating.
+e = n19[(n19.direction == 'gnn->lm') & (n19.signal == AX['gnn->lm'])]
+for it in (0, 1):
+    tag = 'PLACEBO (must not move)' if it == 0 else 'KNOCK-ON (teacher is now the degraded GNN)'
+    print('gnn->lm, em iteration %d  --  %s' % (it, tag))
+    print('   %-18s %-12s %10s %9s' % ('arm', 'bin', 'NCS', 'teacher'))
+    for arm in A19:
+        for f, lbl in ((True, 'OUT-OF-BIAS'), (False, 'in-bias')):
+            r = e[(e.arm == arm) & (e.teacher_out_of_bias_bin == f) & (e.iteration == it)]
+            if r.empty:
+                continue
+            print('   %-18s %-12s %+10.4f %9.3f'
+                  % (arm, lbl, r.groupby('seed').ncs.mean().mean(), r.teacher_acc.mean()))
+    print()
+print('shift from li=T on the E-step (published_li_T - published), per bin:')
+for it in (0, 1):
+    for f, lbl in ((True, 'OUT-OF-BIAS'), (False, 'in-bias')):
+        a = e[(e.arm == 'published_li_T') & (e.teacher_out_of_bias_bin == f) & (e.iteration == it)].groupby('seed').ncs.mean()
+        b = e[(e.arm == 'published') & (e.teacher_out_of_bias_bin == f) & (e.iteration == it)].groupby('seed').ncs.mean()
+        k = sorted(set(a.index) & set(b.index))
+        g = np.array([a[i] - b[i] for i in k])
+        print('   iter%d %-12s %+.5f  [%s]  stable %s'
+              % (it, lbl, g.mean(), ', '.join('%+.4f' % v for v in g),
+                 bool((np.sign(g) == np.sign(g.mean())).all()) if abs(g.mean()) > 1e-9 else '-'))
 
 # --- the test: lm->gnn on the LM teacher's own axis ---
 q = n19[(n19.direction == 'lm->gnn') & (n19.signal == AX['lm->gnn'])]
@@ -566,7 +591,26 @@ channel removed the feature channel's damage nearly **doubles** (−2.25pp, t = 
 training the GNN to *predict* consistently with the teacher regularises how it reads the
 label input.
 
-**Scope, as narrow as the design permits.** One direction, by architecture. `li=T`,
+### The damage does not stay in the M-step
+
+The negative control passes on **both** bins at iteration 0 — exactly +0.0000, every
+seed, in-bias and out-of-bias alike. Nothing leaks.
+
+At iteration 1 it moves, and the way it moves is itself a result. The language model's
+net correction in the out-of-bias bin goes from **+0.0036 to −0.0075** — a shift of
+**−0.0111**, negative on all three seeds — while the in-bias shift (−0.0081) flips sign
+across seeds and is not resolvable. So corrupting the graph model through its input
+features degrades the *language* model at the next round, and it does so selectively:
+concentrated where the graph teacher is weak, absent or unstable where it is strong.
+
+This matters for how the finding should be read. The feature channel is not a local
+defect in one training step — the loop carries it. A single round understates the cost,
+which is consistent with the accuracy gap (−1.21pp) exceeding what one step's net
+correction would predict.
+
+**Scope, as narrow as the design permits.** One direction of *injection*, by
+architecture — though as above, one direction of injection does not mean one direction
+of consequence. `li=T`,
 which **no upstream GLEM config sets** — so this does not bear on the 76.97 reproduced
 in Phase 1. The claim is about *cross-model pseudo-label reuse*, adjacent to but not
 identical with the gold-label masked reuse of UniMP.
