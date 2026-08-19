@@ -316,13 +316,13 @@ md(r"""
 **Perfect gating pays, and not only on arxiv — 17 of 18 cells show a positive
 gain.** Where the test set is large enough to resolve it:
 
-| dataset | model | random | oracle | gain | t |
-|---|---|---|---|---|---|
-| arxiv | LM | 0.7468 | **0.7902** | **+4.35pp** | **98.3** |
-| arxiv | GNN | 0.7657 | **0.7981** | **+3.24pp** | **25.4** |
-| pubmed | GNN | 0.9517 | 0.9607 | +0.90pp | **6.65** |
-| pubmed | LM | 0.9497 | 0.9597 | +1.00pp | **4.39** |
-| cora | GNN | 0.8801 | 0.9188 | +3.87pp | **3.44** |
+| dataset | model | seeds | random | oracle | gain | t |
+|---|---|---|---|---|---|---|
+| arxiv | LM | 3 | 0.7500 | **0.7938** | **+4.37pp** | **115.9** |
+| arxiv | GNN | 3 | 0.7656 | **0.7993** | **+3.37pp** | **22.4** |
+| pubmed | GNN | 3 | 0.9517 | 0.9607 | +0.90pp | **6.65** |
+| pubmed | LM | 3 | 0.9497 | 0.9597 | +1.00pp | **4.39** |
+| cora | GNN | 3 | 0.8801 | 0.9188 | +3.87pp | **3.44** |
 
 The remaining cells are positive but underpowered: cora LM (t = 1.74), citeseer LM
 (2.00), and the four WebKB sets, whose 19–26 test nodes cannot resolve anything.
@@ -330,13 +330,14 @@ The remaining cells are positive but underpowered: cora LM (t = 1.74), citeseer 
 quantisation artifact of 26 test nodes, not precision, and it is masked in the table
 above.
 
-arxiv is nonetheless the cleanest cell by a wide margin: signal-to-noise of 18:1 and
-72:1, against pubmed's 3.8:1 and cora's 2:1. Its tiny seed variance, not its effect
-size, is what makes it the dataset where a *realisable* gate could be measured.
+arxiv is nonetheless the cleanest by a wide margin: gain-to-seed-spread of 13:1 (GNN)
+and 67:1 (LM), against pubmed's 3.8:1 and cora's 2:1. Its tiny seed variance, not its
+effect size, is what makes it the one dataset where a *realisable* gate could be
+measured at all — cornell shows a far larger gain (+10.5pp) at t = 2.0.
 
 Note `oracle_random` sits *below* published on arxiv — dropping ~24% of pseudo-labels
-at random **costs** 0.20pp (GNN) and 1.00pp (LM) — so a real gate must clear that
-before showing any gain.
+at random **costs** 0.21pp (GNN) and 0.68pp (LM) — a shrinkage tax every loss-channel
+gate must clear before it can show any gain at all.
 
 An earlier version of this analysis dismissed the oracle result as transductive label
 leakage. **That was wrong and is withdrawn (A15):** training a student on
@@ -351,10 +352,13 @@ GLEM already ships a per-node confidence gate: `pl_filter` keeps the top-k by
 max-softmax. The arxiv config leaves it **unset**. Selection precision predicted this
 would recover ~36% of the oracle's headroom, so A16 preregistered **+0.8pp**.
 
-**Actual: ≈0.** conf_gate90 gives +0.13pp (GNN) and −0.14pp (LM), and the result is
-monotone in keep-rate — the more you drop, the worse you do, with conf_gate60 losing
-0.45pp (GNN) / 1.65pp (LM). Against a *size-matched random* control the best
-confidence arm buys only +0.33pp (GNN) / +0.87pp (LM).
+**Actual: ≈0.** Paired by seed against `published`, `conf_gate90` gives **+0.09pp
+(GNN, t = 0.7)** and **−0.56pp (LM, t = −1.4)** over three seeds — indistinguishable
+from no change. The result is monotone in keep-rate: the more you drop the worse you
+do, with `conf_gate60` at −0.57pp / −2.01pp. Against a *size-matched random* control,
+which is the fair comparison since it holds training-set size fixed, the best
+confidence arm buys **+0.30pp (GNN, t = 4.8) / +0.12pp (LM, t = 0.2)** — real on the
+GNN, absent on the LM, and under a tenth of the oracle's headroom either way.
 
 The prediction was wrong for a diagnosable reason. Confidence discriminates teacher
 error well overall (AUROC ≈ 0.78) but **collapses to 0.628 inside the out-of-bias
@@ -397,12 +401,12 @@ transfer.
 
 Teacher precision on the kept set, averaged over gated steps and seeds:
 
-| arm | teacher | ungated | gated |
-|---|---|---|---|
-| `sig_gate80_gnn` | GNN | 0.768 | **0.832** (+6.4pp) |
-| `sig_gate80_lm` | LM | 0.755 | **0.805** (+5.0pp) |
-| `sig_gate90` | GNN | 0.770 | 0.801 (+3.2pp) |
-| `sig_gate90` | LM | 0.754 | 0.780 (+2.7pp) |
+| arm | teacher | seeds | ungated | gated |
+|---|---|---|---|---|
+| `sig_gate80_gnn` | GNN | 3 | 0.768 | **0.832** (+6.4pp) |
+| `sig_gate80_lm` | LM | 3 | 0.755 | **0.805** (+5.0pp) |
+| `sig_gate90` | GNN | 2 | 0.770 | 0.801 (+3.2pp) |
+| `sig_gate90` | LM | 2 | 0.754 | 0.780 (+2.7pp) |
 
 Confidence, at the same keep-rate, lifts precision on the *confidently-wrong*
 population by **0.0pp**. The signals are reaching a population confidence cannot.
