@@ -46,15 +46,20 @@ md(r"""
 |---|---|---|
 | **1. Instrument** | can before/after/teacher be recovered per step? | yes — but GLEM overwrites its own logits, so an archive had to be built first |
 | **2. Harm measurement** | is NCS negative where the teacher is out of bias? | **no**, on 13 of 14 scorable cells |
-| **3. Why not?** | what breaks the prediction? | the teacher stays *better than the student* even where it is weakest |
+| **3. Why not?** | what breaks the prediction? | GLEM's **asymmetric α/β** already down-weights the direction where the teacher is weak |
 | **4. Mechanism** | does the student adopt the teacher's wrong labels? | **yes, 1.7–5.8×** — the mechanism is real, it just does not net out |
-| **5. Ceiling** | would perfect gating pay? | **yes, +2.8 / +3.6pp** on arxiv |
+| **5. Ceiling** | would perfect gating pay? | **yes, +3.4 / +4.4pp** on arxiv; positive on 17 of 18 cells |
 | **6. Confidence gate** | does the field's standard fix capture it? | **no, ≈0** — and we can say precisely why |
-| **7. Signal gate** | do exogenous signals reach what confidence cannot? | *running* |
+| **7. Signal gate** | do exogenous signals reach what confidence cannot? | they reach the population but **do not beat confidence** |
+| **8. Feature channel** | is the harm in *how* the label is delivered? | **yes — Supported.** −1.21pp accuracy, concentrated out-of-bias |
 
 The pivot at phase 3 is the substance of the project: the original prediction was
-wrong, and being wrong turned out to be more informative than being right, because
-the reason is measurable.
+wrong, and being wrong turned out to be more informative than being right, because the
+reason is measurable. Phase 8 then found the prediction **was** right — in a channel §4
+never measured. Phase 3's own first explanation ("the teacher stays better than the
+student") was itself later withdrawn: it holds only for `gnn→lm`, and on arxiv by 0.9pp.
+In `lm→gnn` the teacher is *worse* than the student in 12 of 12 cells, and NCS is still
+non-negative in 5 of them.
 """)
 
 co(r"""
@@ -329,8 +334,9 @@ arxiv is nonetheless the cleanest cell by a wide margin: signal-to-noise of 18:1
 72:1, against pubmed's 3.8:1 and cora's 2:1. Its tiny seed variance, not its effect
 size, is what makes it the dataset where a *realisable* gate could be measured.
 
-Note `oracle_random` sits *below* published on arxiv — dropping 23% of pseudo-labels
-at random **costs** 0.42pp — so a real gate must clear that before showing any gain.
+Note `oracle_random` sits *below* published on arxiv — dropping ~24% of pseudo-labels
+at random **costs** 0.20pp (GNN) and 1.00pp (LM) — so a real gate must clear that
+before showing any gain.
 
 An earlier version of this analysis dismissed the oracle result as transductive label
 leakage. **That was wrong and is withdrawn (A15):** training a student on
@@ -345,9 +351,10 @@ GLEM already ships a per-node confidence gate: `pl_filter` keeps the top-k by
 max-softmax. The arxiv config leaves it **unset**. Selection precision predicted this
 would recover ~36% of the oracle's headroom, so A16 preregistered **+0.8pp**.
 
-**Actual: ≈0.** conf_gate90 gives −0.09pp (GNN) and +0.14pp (LM), and the result is
-monotone in keep-rate — the more you drop, the worse you do. Confidence selection buys
-only +0.13pp (GNN) / +0.73pp (LM) over *random* selection at a comparable keep-rate.
+**Actual: ≈0.** conf_gate90 gives +0.13pp (GNN) and −0.14pp (LM), and the result is
+monotone in keep-rate — the more you drop, the worse you do, with conf_gate60 losing
+0.45pp (GNN) / 1.65pp (LM). Against a *size-matched random* control the best
+confidence arm buys only +0.33pp (GNN) / +0.87pp (LM).
 
 The prediction was wrong for a diagnosable reason. Confidence discriminates teacher
 error well overall (AUROC ≈ 0.78) but **collapses to 0.628 inside the out-of-bias
@@ -367,7 +374,7 @@ vindicates the hypothesis's *premise* while refuting its prediction.
 """)
 
 md(r"""
-## Phase 7 — the exogenous-signal gate (running)
+## Phase 7 — the exogenous-signal gate: a real slice, not a fix
 
 Three arms (A18), decomposed by teacher so the effect can be attributed:
 
@@ -380,18 +387,195 @@ Three arms (A18), decomposed by teacher so the effect can be attributed:
 Keep-rates deliberately match `conf_gate80/90`, so the difference isolates the
 **signal** with shrinkage held constant.
 
-**Preflight on arxiv** — the gate does raise kept-set teacher accuracy: 0.767 → 0.833
-(GNN teaching) and 0.755 → 0.805 (LM teaching) at 80% keep.
-
 **Prediction recorded before running: +0.3 to +0.5pp** over published — the oracle's
 +2.82pp scaled by the 12–18% of the confidently-wrong population these signals reach.
 Deliberately more modest than A16's failed +0.8pp, and grounded in the mechanism that
 explains that failure rather than in selection precision, which is now known not to
 transfer.
 
+### The gate selects as designed
+
+Teacher precision on the kept set, averaged over gated steps and seeds:
+
+| arm | teacher | ungated | gated |
+|---|---|---|---|
+| `sig_gate80_gnn` | GNN | 0.768 | **0.832** (+6.4pp) |
+| `sig_gate80_lm` | LM | 0.755 | **0.805** (+5.0pp) |
+| `sig_gate90` | GNN | 0.770 | 0.801 (+3.2pp) |
+| `sig_gate90` | LM | 0.754 | 0.780 (+2.7pp) |
+
+Confidence, at the same keep-rate, lifts precision on the *confidently-wrong*
+population by **0.0pp**. The signals are reaching a population confidence cannot.
+
+### Result, against the size-matched random control
+
+Paired by seed against `oracle_random`, which holds training-set size fixed:
+
+| arm | seeds | GNN | LM |
+|---|---|---|---|
+| `sig_gate80_gnn` (E-step only) | 3 | +0.23pp (t=2.21) | +0.32pp (t=0.45) |
+| `sig_gate80_lm` (M-step only) | 3 | +0.30pp (t=2.29) | +0.43pp (t=2.42) |
+| `sig_gate80` (both) | 2 | +0.22pp | +1.08pp |
+| `sig_gate90` (both, milder) | 2 | +0.30pp | +0.10pp |
+| `conf_gate90` (confidence) | 3 | +0.30pp (t=4.79) | +0.12pp (t=0.16) |
+| `oracle` (ceiling) | 3 | **+3.37pp** (t=22.5) | **+4.37pp** (t=115.9) |
+
+**The third seed retracted the headline this section originally carried.** At two seeds
+`sig_gate80_gnn` read +1.03pp on the LM and the write-up concluded "the E-step carries
+it". At three it reads **+0.32pp with t = 0.45**, and the M-step arm is now the
+marginally stronger of the two. The collapse is not subtle: `sig_gate80_gnn`'s LM
+accuracy across seeds is 0.7591 / 0.7551 / **0.7457**, while `oracle_random`'s third
+seed came in unusually *high*. Nothing about the mechanism changed — the sample did.
+
+What survives at three seeds is much weaker than the two-seed reading:
+
+1. **Every deployable gate gives a small positive against the size-matched control** —
+   +0.14 to +0.30pp on the GNN — and all of them recover **under a tenth** of the
+   oracle's headroom despite closing 21–28% of the precision gap. The
+   precision→accuracy relationship is sharply sublinear.
+2. **The exogenous signal no longer beats confidence.** `conf_gate90` is the strongest
+   deployable GNN arm on the board (+0.30pp, t=4.79). A18's premise — that reaching the
+   confidently-wrong population would convert into accuracy — is not supported. The
+   signals *do* reach that population and *do* lift kept-set teacher precision by
+   5.0–6.4pp; it simply does not pay.
+3. **The LM side is unresolvable.** `oracle_random`'s own LM accuracy spans 1.0pp
+   across seeds. No gate effect of this size is measurable there.
+
+`sig_gate80`'s +1.08pp LM is the last two-seed number in the table, and given what seed
+2 did to `sig_gate80_gnn` it should be read as pending, not as a result.
+
+### It does not beat GLEM as shipped
+
+Against `published`, every deployable arm is 0 to −1pp. That comparison is not
+resolvable and will not become so: `published` LM spans **0.7540 / 0.7670 / 0.7494**, a
+1.8pp seed spread wider than any effect here. Powering it to t=2 would need ~24 seeds
+on the GNN and several hundred on the LM — 270 and 5,700 GPU-hours. The honest
+statement is that the gate clears a size-matched control and does not clear GLEM.
+
 **Scope limit (found by smoke test, not by luck):** on cornell the GLANCE gate
 *lowers* kept-set accuracy (−0.050) because GLANCE's sign inverts on heterophilous
 graphs. The arms are registered for arxiv only.
+""")
+
+md(r"""
+## Phase 8 — the feature channel: the hypothesis, relocated (A19/A20)
+
+Every arm so far delivered pseudo-labels to the student through **one** path: the loss,
+scaled by α or β. GLEM has a second path. With `gnn_label_input=T` the teacher's
+`y_hat` is concatenated onto the GNN's **input features** — soft teacher predictions for
+unlabeled nodes, gold one-hots for train nodes. That is *label reuse*, standard on
+ogbn-arxiv (UniMP; Wang et al., "Bag of Tricks"), and it is GLEM's own framework
+**default** (`gnn_utils.py:32`) which every shipped config overrides to `F`.
+
+**The lead was post-hoc and is labelled as such.** Slicing the §13 null by
+`gnn_label_input` showed every cell where the label also enters the features has
+negative out-of-bias NCS (4/4, mean −0.0253) against +0.0047 and 2/8 where it enters the
+loss alone. That slice was confounded three ways — WebKB only (n=23–37), GCN only, and
+configs written for this study. A19 registered the decision rule on arxiv **before** the
+run; A20 records the two corrections it needed afterwards.
+
+**Why expect a different answer here.** A wrong label in the loss is one term scaled by
+β = 0.05. A wrong label in the features is read at inference and enters the node's
+representation **unscaled**. §13's null is explained by GLEM's asymmetric α/β protecting
+the loss channel; the feature channel has no equivalent.
+
+The channel exists in **one direction only** — no LM code path consumes pseudo-labels as
+input — so `gnn→lm` is a built-in placebo. A20 scopes it to **iteration 0**: at
+iteration 1 the E-step's teacher *is* the GNN the M-step just trained, so movement there
+is the mechanism propagating, not leakage.
+""")
+
+co(r"""
+AX = {'gnn->lm': 'local_homophily', 'lm->gnn': 'knn_ambiguity'}
+A19 = ['published', 'published_li_T', 'alpha0_li_T', 'alpha0_li_T_only']
+n19 = ncs[(ncs.dataset == 'arxiv_TA') & (ncs.bin_scheme == 'median')]
+
+# --- the placebo: gnn->lm at iteration 0 must not move ---
+pl = n19[(n19.direction == 'gnn->lm') & (n19.signal == AX['gnn->lm'])
+         & (n19.teacher_out_of_bias_bin) & (n19.iteration == 0)]
+print('PLACEBO  gnn->lm, iteration 0 (A20 scoping) -- must be unchanged')
+for arm in A19:
+    per = pl[pl.arm == arm].groupby('seed').ncs.mean()
+    if len(per):
+        print('   %-18s %+.4f  [%s]' % (arm, per.mean(), ', '.join('%+.4f' % v for v in per)))
+
+# --- the test: lm->gnn on the LM teacher's own axis ---
+q = n19[(n19.direction == 'lm->gnn') & (n19.signal == AX['lm->gnn'])]
+print()
+print('TEST  lm->gnn, knn_ambiguity axis')
+print('%-18s %-12s %8s %10s %13s' % ('arm', 'bin', 'n', 'NCS', 'corr/corrupt'))
+oob = {}
+for arm in A19:
+    for f, lbl in ((True, 'OUT-OF-BIAS'), (False, 'in-bias')):
+        r = q[(q.arm == arm) & (q.teacher_out_of_bias_bin == f)]
+        if r.empty:
+            continue
+        per = r.groupby('seed').ncs.mean()
+        print('%-18s %-12s %8.0f %+10.4f %13s'
+              % (arm, lbl, r.n.mean(), per.mean(),
+                 '%d/%d' % (r.corrections.sum(), r.corruptions.sum())))
+        if f:
+            oob[arm] = per
+print()
+print('paired gap vs reference (out-of-bias):')
+for t, ref in (('published_li_T', 'published'), ('alpha0_li_T_only', 'alpha0_li_T')):
+    a, b = oob[t], oob[ref]
+    k = sorted(set(a.index) & set(b.index))
+    g = np.array([a[i] - b[i] for i in k])
+    print('   %-18s - %-16s %+.4f  [%s]  stable %s'
+          % (t, ref, g.mean(), ', '.join('%+.4f' % v for v in g),
+             bool((np.sign(g) == np.sign(g.mean())).all())))
+
+# --- does it reach final accuracy? the 2x2 ---
+print()
+print('FINAL GNN TEST ACCURACY -- the 2x2')
+w = acc[(acc.dataset == 'arxiv_TA') & (acc.model == 'gnn')].pivot_table(
+    index='seed', columns='arm', values='test_acc')
+grid = pd.DataFrame(
+    {'li=F': [w['published'].mean(), w['alpha0_li_T'].mean()],
+     'li=T': [w['published_li_T'].mean(), w['alpha0_li_T_only'].mean()]},
+    index=['loss on  (a=.8, b=.05)', 'loss off (a=b=0)'])
+grid['feature effect'] = ((grid['li=T'] - grid['li=F']) * 100).round(2)
+print(grid.round(4).to_string())
+for t, ref in (('published_li_T', 'published'), ('alpha0_li_T_only', 'alpha0_li_T')):
+    d_ = (w[t] - w[ref]).dropna()
+    tt = d_.mean() / (d_.std(ddof=1) / np.sqrt(len(d_))) if d_.std(ddof=1) > 1e-12 else float('nan')
+    print('   %-18s - %-16s %+.2fpp  t=%.2f' % (t, ref, 100 * d_.mean(), tt))
+""")
+
+md(r"""
+### The result: **Supported**, on every clause
+
+| clause | observed |
+|---|---|
+| placebo `gnn→lm` at iteration 0 | **bit-identical** to `published` (+0.0087, equal per seed) |
+| out-of-bias NCS < 0 | **−0.0073** (−0.0037 / −0.0078 / −0.0104) |
+| exact McNemar p < 0.01 | **5.1 × 10⁻³²** |
+| gap vs `published`, sign stable | **−0.0108** (−0.0079 / −0.0119 / −0.0127) |
+
+And unlike anything in Phase 2, the harm is **concentrated where the teacher is weak** —
+the out-of-bias minus in-bias gap is **−0.0056** for `published_li_T` against **+0.0030**
+for `published`, with teacher accuracy 0.629 out-of-bias against 0.877 in-bias. The
+damage tracks teacher *wrongness*, not the mechanism, which is what licenses attributing
+it to the labels being wrong rather than to label-as-feature per se.
+
+It reaches final accuracy. Reading the 2×2 margins: the **loss** channel *helps*
+(+1.16pp), the **feature** channel *hurts* (−1.21pp, t = −6.93), and with the loss
+channel removed the feature channel's damage nearly **doubles** (−2.25pp, t = −19.15).
+β = 0.05 partially protects against the very labels it delivers — plausibly because
+training the GNN to *predict* consistently with the teacher regularises how it reads the
+label input.
+
+**Scope, as narrow as the design permits.** One direction, by architecture. `li=T`,
+which **no upstream GLEM config sets** — so this does not bear on the 76.97 reproduced
+in Phase 1. The claim is about *cross-model pseudo-label reuse*, adjacent to but not
+identical with the gold-label masked reuse of UniMP.
+
+**What it unlocks.** Every gate in Phases 5–7 filtered `pl_nodes`, which feeds the
+**loss** only — `y_hat` never consults it. So the feature channel has never been gated,
+and a mask there pays none of the shrinkage tax that cost every loss gate 0.20–1.00pp
+before it could show a gain. A19 registers that follow-up as contingent, and Phase 8 is
+the condition being met.
 """)
 
 md(r"""
@@ -404,19 +588,37 @@ md(r"""
    of 14 scorable cells null, across 8 datasets and 3 seeds.
 3. **The harm mechanism is nonetheless real** — students adopt the teacher's specific
    wrong label at 1.7–5.8× the retraining baseline.
-4. **It does not net out because the teacher stays better than the student**, even at
-   58% accuracy against a 57% student.
+4. **It does not net out because GLEM's α/β is already asymmetric** — α = 0.50–0.80
+   where the teacher is usually stronger, β = 0.05–0.70 where it is always weaker. The
+   between-step weighting already does what a per-node gate was meant to do. (An earlier
+   reading — "the teacher stays better than the student" — was **withdrawn**: it holds
+   only for `gnn→lm`, by 0.9pp on arxiv.) Teacher errors also concentrate on nodes hard
+   for *every* model: 88% of the GNN's errors are also the LM's.
 5. **Perfect gating pays across datasets** — positive on 17 of 18 cells, and
    significant on arxiv (+3.2 / +4.3pp), pubmed (+0.9 / +1.0pp) and cora (+3.9pp).
    Headroom is not an arxiv artifact.
 6. **Confidence-based gating captures almost none of it**, because it is blind to the
    confidently-wrong population — a negative result about the standard fix.
-7. **arxiv's E-step is weakly supported** — the one cell where the axis, the power and
-   the control all line up.
+7. **Exogenous-signal gating captures a small slice and does not beat confidence** —
+   +0.14 to +0.30pp on the GNN against a size-matched control, under a tenth of the
+   oracle's headroom. The two-seed reading that credited the E-step was **retracted by
+   the third seed** (+1.03pp → +0.32pp, t = 0.45).
+8. **arxiv's E-step is weakly supported** — the one §11 cell where the axis, the power
+   and the control all line up.
+9. **The harm is real in the feature channel** (A19/A20) — `gnn_label_input=T` turns
+   out-of-bias NCS negative (−0.0073, p = 5×10⁻³²), **concentrated** out-of-bias unlike
+   anything in the loss channel, costing **−1.21pp** final GNN accuracy and −2.25pp with
+   the loss channel off. The original hypothesis holds — for *how* the label is
+   delivered, not *which* nodes receive one.
 
 **Not established:**
 
-- **Whether exogenous-signal gating pays.** Running; predicted +0.3–0.5pp.
+- **Whether a feature-channel gate recovers the −2.25pp.** Registered contingent in
+  A19, now motivated by Phase 8, not implemented. Unlike every loss gate it pays no
+  shrinkage tax, which is the one structural reason to expect it could work.
+- **Whether any loss-channel gate beats GLEM as shipped.** It will not become
+  resolvable: `published` LM varies 1.8pp across seeds, and powering that comparison to
+  t = 2 needs ~24 seeds on the GNN and several hundred on the LM.
 - **The low-label regime.** Arm 3 (few-shot 3/5/10 labels per class) was withdrawn
   (A5). §8 predicted harm would be strongest where the gold-label CE term is too weak
   to anchor the student, so every null here is compatible with "harm exists but is
