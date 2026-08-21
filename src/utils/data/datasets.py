@@ -166,13 +166,48 @@ class SeqGraph():
         return F.one_hot(labels, num_classes=self.n_labels).type(th.FloatTensor) if on_cpu \
             else F.one_hot(labels, num_classes=self.n_labels).type(th.FloatTensor).to(self.device)
 
-    def y_hat(self, nodes, on_cpu=False):
+    def y_hat(self, nodes, on_cpu=False, overwrite_gold=True):
         # Pseudo labels overwritten by gold
         is_gold = self.is_gold(nodes)
         y_pred = th.softmax(self._th_float(self.ndata['pseudo_labels'][nodes] / self.cf.emi.temperature, on_cpu), dim=-1)
-        # Overwrite pseudo_y using gold_y
-        y_pred[is_gold] = self.y_gold(th.tensor(nodes)[is_gold], on_cpu)
+        # Overwrite pseudo_y using gold_y. ``overwrite_gold=False`` is A21's
+        # ``teacher_consistent`` and is passed ONLY from _label_feature -- never from
+        # the loss-target callers, which must keep gold.
+        if overwrite_gold:
+            y_pred[is_gold] = self.y_gold(th.tensor(nodes)[is_gold], on_cpu)
         return y_pred
+
+    def _label_feature(self, nodes, on_cpu=False):
+        """The label vector as concatenated onto GNN **input features** (A21).
+
+        Deliberately separate from ``y_hat``, which is also the *loss target* --
+        ``node_labels``, ``gnn_trainer.pseudo_labels`` and ``get_tokens`` all call it.
+        Transforming ``y_hat`` itself would change the objective rather than the
+        feature channel, which is a different experiment from the one A21 registers.
+
+        Returns ``y_hat`` unchanged unless ``GLEM_PROBE_LABELFEAT`` is set, so every
+        run made before A21 is reproduced byte-for-byte.
+        """
+        from probe import label_feat
+        mode = label_feat()
+        if not mode:
+            return self.y_hat(nodes, on_cpu)
+        if mode == 'teacher_consistent':
+            # Channel reliability matched between train and inference: the teacher's
+            # own prediction on every node, gold nowhere. Gold labels remain in the
+            # GNN's loss, so supervision is untouched -- only the shortcut is removed.
+            return self.y_hat(nodes, on_cpu, overwrite_gold=False)
+        y = self.y_hat(nodes, on_cpu)
+        is_gold = self.is_gold(nodes, on_cpu)
+        if mode == 'mask_pseudo':
+            y[~is_gold] = 0.0
+        elif mode == 'mask_train':
+            y[is_gold] = 0.0
+        else:
+            raise ValueError(
+                f'unknown GLEM_PROBE_LABELFEAT={mode!r}; expected '
+                f'teacher_consistent|mask_pseudo|mask_train')
+        return y
 
     def node_feature(self, nodes, on_cpu=False):
         # Only called at GNN (M-) step
@@ -181,8 +216,9 @@ class SeqGraph():
         else:
             features = self._th_float(self.ndata['feature'][nodes], on_cpu)
         if self.label_as_feat:
-            # Concat feature and prediction
-            features = th.cat((features, self.y_hat(nodes, on_cpu)), dim=1)
+            # Concat feature and prediction. Routed through _label_feature so A21's
+            # transforms reach the feature channel WITHOUT touching the loss targets.
+            features = th.cat((features, self._label_feature(nodes, on_cpu)), dim=1)
         return features
 
     def node_labels(self, nodes):

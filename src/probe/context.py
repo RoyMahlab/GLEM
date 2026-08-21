@@ -16,6 +16,7 @@ ENV_ARM = 'GLEM_PROBE_ARM'
 ENV_REGIME = 'GLEM_PROBE_REGIME'
 ENV_VARIANT = 'GLEM_PROBE_VARIANT'
 ENV_GATE = 'GLEM_PROBE_GATE'
+ENV_LABELFEAT = 'GLEM_PROBE_LABELFEAT'
 
 #: Arms defined by EXPERIMENT.md section 8. ``published`` is Arm 1; the two
 #: ``alpha0_*`` arms are Arm 2a / 2b, differing only in ``gnn_label_input``.
@@ -24,6 +25,7 @@ ENV_GATE = 'GLEM_PROBE_GATE'
 #: control -- ``report.py`` treats only the ``alpha0_*`` arms as such.
 ARMS = ('published', 'alpha0_li_T', 'alpha0_li_F', 'published_li_F',
         'published_li_T', 'alpha0_li_T_only',
+        'teacher_consistent', 'mask_pseudo', 'mask_train',
         'oracle', 'oracle_random',
         'conf_gate60', 'conf_gate80', 'conf_gate90',
         'sig_gate80', 'sig_gate90',
@@ -81,6 +83,26 @@ def gate() -> str:
     See ``probe.gating``. Empty by default, so ungated runs are unaffected.
     """
     return os.environ.get(ENV_GATE, '').strip()
+
+
+def label_feat() -> str:
+    """Which A21 transform is applied to the *label feature vector*, or ``''``.
+
+    ``teacher_consistent``
+        Do not overwrite the teacher's prediction with the gold label on train
+        nodes, so the channel has the same reliability at training time as at
+        inference (measured on arxiv: 0.750 against 0.755, versus 1.000 against
+        0.755 as shipped).
+    ``mask_pseudo``
+        Keep gold on train nodes, zero the teacher's prediction everywhere else.
+    ``mask_train``
+        Zero the gold entry on train nodes (UniMP-style self-label masking),
+        keep the teacher's prediction elsewhere.
+
+    Read only by ``SeqGraph._label_feature``. Empty by default, so an
+    un-instrumented run is unchanged.
+    """
+    return os.environ.get(ENV_LABELFEAT, '').strip()
 
 
 def variant() -> str:

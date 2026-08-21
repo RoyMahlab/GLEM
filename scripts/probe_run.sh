@@ -57,6 +57,21 @@ case "$ARM" in
     # features, never through the loss. Note the existing alpha0_li_T does NOT force
     # T -- it inherits the config, which is F on arxiv -- so it is not this arm.
     ARM_ARGS="--lm_pl_weight=0 --gnn_pl_weight=0 --gnn_label_input=T" ;;
+  teacher_consistent)
+    # A21: li=T, but the label feature carries the TEACHER's prediction on train nodes
+    # too instead of the gold one-hot. Closes the train/inference reliability gap in
+    # that channel (arxiv: 1.000 vs 0.755 as shipped -> 0.750 vs 0.755). Gold labels
+    # stay in the loss; only the readable shortcut is removed.
+    ARM_ARGS="--gnn_label_input=T"; export GLEM_PROBE_LABELFEAT=teacher_consistent ;;
+  mask_pseudo)
+    # A21: li=T with the teacher's entries zeroed, gold kept on train nodes. WIDENS
+    # the reliability gap (1.000 vs nothing), so it is the least likely of the three
+    # to help -- registered to test that prediction, not because it is expected to win.
+    ARM_ARGS="--gnn_label_input=T"; export GLEM_PROBE_LABELFEAT=mask_pseudo ;;
+  mask_train)
+    # A21: li=T with the gold entry zeroed on train nodes (UniMP-style self-label
+    # masking), teacher's prediction kept elsewhere.
+    ARM_ARGS="--gnn_label_input=T"; export GLEM_PROBE_LABELFEAT=mask_train ;;
   oracle)
     # Published hyperparameters, but the pseudo-label set is restricted to nodes
     # the teacher gets RIGHT. Uses ground truth, so it is an upper bound on any
@@ -104,6 +119,8 @@ export GLEM_PROBE_REGIME="$REGIME"
 export GLEM_PROBE_VARIANT="${GLEM_PROBE_VARIANT:-}"
 # Set by the oracle arms above; empty for every other arm.
 export GLEM_PROBE_GATE="${GLEM_PROBE_GATE:-}"
+# Set by the A21 arms above; empty for every other arm.
+export GLEM_PROBE_LABELFEAT="${GLEM_PROBE_LABELFEAT:-}"
 
 echo "=== probe: $DATASET_STR arm=$ARM regime=$REGIME seed=$SEED -> $PROBE_DIR"
 # shellcheck disable=SC2086

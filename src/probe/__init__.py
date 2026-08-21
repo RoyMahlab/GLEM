@@ -19,7 +19,7 @@ and their ``para_prefix`` path-string machinery -- which would also change the
 artefact paths of un-instrumented runs.
 """
 from probe import context, fewshot, gating, snapshots  # noqa: F401
-from probe.context import enabled  # noqa: F401
+from probe.context import enabled, label_feat  # noqa: F401
 from probe.fewshot import apply_fewshot  # noqa: F401
 from probe.gating import apply_gate  # noqa: F401
 from probe.snapshots import (  # noqa: F401

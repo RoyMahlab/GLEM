@@ -433,6 +433,94 @@ have one. Embeddings are therefore computed for every dataset the same way
 **mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
 the choice changes no value — it only makes provenance uniform.
 
+**A21 (2026-08-19) — three new arms on the label-feature channel:
+`teacher_consistent`, `mask_pseudo`, `mask_train`. The comparator is `published`,
+not `published_li_T`. Excluded from the §11 verdict.**
+
+§13.3 established that routing the teacher's predictions through the GNN's input
+features costs 1.21pp. It did not establish **why**, and the difference matters: the
+answer determines whether the finding is about a configuration flag or about a
+condition under which a widely-used technique is safe.
+
+**The mechanism these arms test.** `y_hat` fills the label-feature vector with the
+teacher's softmaxed prediction and then **overwrites it with the gold one-hot on train
+nodes**. Nothing masks it — the only `mask` in the codebase is the tokenizer's
+attention mask. So the channel the GNN learns from and the channel it meets at
+inference have very different reliability. Measured on arxiv, LM teacher accuracy:
+
+| | in training (train nodes) | at inference (val ∪ test) | gap |
+|---|---|---|---|
+| as shipped (`li=T`) | **1.000** (gold) | 0.755 | **24.5pp** |
+| `teacher_consistent` | 0.750 | 0.755 | **−0.5pp** |
+
+The teacher is 0.750 on train nodes and 0.755 on evaluation nodes — near-identical,
+because the LM is a 3-epoch fine-tune that does not memorise its train split. So
+removing the gold overwrite closes the gap almost exactly, changing nothing else.
+
+That predicts the pattern §13.3 measured: harm concentrated where the teacher is least
+accurate (0.629 out-of-bias against 0.877 in-bias), because that is where the channel
+deviates most from what the model learned to trust.
+
+**Arms.** Registered for **arxiv only**.
+
+| arm | train-node entry | val/test entry | isolates |
+|---|---|---|---|
+| `teacher_consistent` | teacher's prediction | teacher's prediction | the reliability gap alone |
+| `mask_train` | zeroed (UniMP-style) | teacher's prediction | the readable-shortcut alone |
+| `mask_pseudo` | gold | zeroed | the unreliable half alone |
+
+`teacher_consistent` is the arm that answers the reviewer objection this amendment
+exists for, and it runs first. **`mask_pseudo` is expected to be the weakest of the
+three** and is registered to test that expectation rather than because it is promising:
+it *widens* the reliability gap to 1.000 against nothing. An earlier informal
+recommendation to run it first is **withdrawn** — it was made before the table above
+was computed.
+
+Note that none of the three removes supervision. Gold labels remain in the GNN's loss
+throughout; only their presence as a *readable input feature* changes. This is the
+distinction UniMP's masked label prediction rests on.
+
+**Implementation, recorded because the obvious version would be wrong.** `y_hat` is
+also the **loss target** — `node_labels`, `gnn_trainer.pseudo_labels` and `get_tokens`
+all call it. Transforming `y_hat` itself would change the objective, not the feature
+channel, and would silently make these arms a different experiment. The transform is
+therefore applied in `SeqGraph._label_feature`, reached only from `node_feature`, and
+`y_hat` gains one additive keyword (`overwrite_gold=True`) whose default reproduces its
+previous body exactly. With `GLEM_PROBE_LABELFEAT` unset the code path is unchanged.
+
+**Decision rule, fixed before any of these arms is run.**
+
+The comparator is **`published` (0.7677 GNN, 3 seeds)** — *not* `published_li_T`
+(0.7556). Beating `published_li_T` would only mean undoing damage introduced by a flag
+that GLEM's own recipes set to `F`, which is available for free. Stated explicitly here
+because it is the difference between a contribution and a repair.
+
+- **Mechanism identified** — `teacher_consistent` recovers a majority of the 1.21pp gap
+  against `published` (i.e. lands at or above ≈0.764 GNN), with sign-stable per-seed
+  differences over 3 seeds. The harm is then attributable to the reliability mismatch,
+  and the safe-usage condition is stated rather than guessed.
+- **Mechanism rejected** — `teacher_consistent` stays at or below `published_li_T`. The
+  harm is cross-model label input as such, independent of the mismatch.
+- **Method** — any arm exceeds `published` with sign-stable per-seed differences. Only
+  this outcome licenses a recommendation rather than a warning.
+
+**Prediction fixed in advance: `teacher_consistent` recovers most of the 1.21pp but does
+not exceed `published`.** Closing a 24.5pp reliability gap should remove the mismatch
+penalty, while replacing gold with a 75%-accurate signal in the feature channel gives
+up real information that `li=F` never had to give up. A result above `published` would
+be a genuine surprise, and is registered as such.
+
+**A limitation found while smoke-testing these arms, and it applies to every result in
+§13.** GLEM's GNN training is **not deterministic run-to-run**: two runs of the
+`published` arm at the same seed, same code, same GPU produce different GNN logits
+(`iter0_lm`, the one step with no GNN involvement, is identical). Every "seed sd"
+reported in §13 therefore conflates seed variance with run-to-run variance. This is
+conservative for the paired comparisons — the noise is included, so effects that clear
+it are real — but it means no effect smaller than run-to-run noise is detectable at all,
+and that a repeated run is not expected to reproduce a previous one exactly. The
+magnitude of that noise on arxiv is unmeasured; quantifying it would cost one duplicate
+run (11.4h) and has not been spent.
+
 **A20 (2026-08-19) — A19's placebo clause needed scoping to iteration 0, and an
 analysis error found and corrected before reporting. A19's text is left unedited.**
 
