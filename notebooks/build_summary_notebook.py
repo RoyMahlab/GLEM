@@ -52,6 +52,7 @@ md(r"""
 | **6. Confidence gate** | does the field's standard fix capture it? | **no, ≈0** — and we can say precisely why |
 | **7. Signal gate** | do exogenous signals reach what confidence cannot? | they reach the population but **do not beat confidence** |
 | **8. Feature channel** | is the harm in *how* the label is delivered? | **yes — Supported.** −1.21pp accuracy, concentrated out-of-bias |
+| **9. Why** | is it the label, or the *unmasked* channel? | **the channel.** Matching train/inference reliability recovers 102% |
 
 The pivot at phase 3 is the substance of the project: the original prediction was
 wrong, and being wrong turned out to be more informative than being right, because the
@@ -627,6 +628,126 @@ the condition being met.
 """)
 
 md(r"""
+## Phase 9 — why the feature channel harms: the reliability mismatch (A21)
+
+Phase 8 established the cost but not the cause, and the difference decides whether this
+is a note about a config flag or a statement about when a standard technique is safe.
+
+`y_hat` fills the label-feature vector with the teacher's prediction, then **overwrites
+it with the gold one-hot on train nodes** — and nothing masks it. The only `mask` in the
+codebase is the tokenizer's attention mask. So the channel the GNN learns from and the
+one it meets at inference have very different reliability:
+
+| | in training | at inference | gap |
+|---|---|---|---|
+| as shipped (`li=T`) | **1.000** (gold) | 0.755 | **24.5pp** |
+| `teacher_consistent` | 0.750 | 0.755 | **−0.5pp** |
+
+The LM teacher is 0.750 on train nodes and 0.755 on evaluation nodes — near-identical,
+because a 3-epoch fine-tune does not memorise its train split. So deleting the gold
+overwrite closes the gap almost exactly and changes nothing else.
+
+A21 registered three arms and the decision rule **before** running them, with the
+comparator fixed as `published` (0.7677) rather than `published_li_T` (0.7556) — beating
+the latter would only undo damage from a flag every shipped recipe sets to `F`.
+""")
+
+co(r"""
+A21 = ['published', 'published_li_T', 'teacher_consistent', 'mask_train', 'mask_pseudo']
+a21 = acc[(acc.dataset == 'arxiv_TA') & (acc.model == 'gnn')].pivot_table(
+    index='seed', columns='arm', values='test_acc')
+
+q21 = ncs[(ncs.dataset == 'arxiv_TA') & (ncs.bin_scheme == 'median')
+          & (ncs.direction == 'lm->gnn') & (ncs.signal == 'knn_ambiguity')
+          & (ncs.teacher_out_of_bias_bin)]
+
+def paired_recovery(series_by_arm, arm):
+    # Seed-PAIRED: mask_pseudo has 2 seeds while the references have 3, and an
+    # unpaired mean-vs-mean inflates its recovery (65% instead of 50%). Every
+    # difference here is taken within a seed and only over seeds the arm actually has.
+    a, dmg_, tgt_ = (series_by_arm(x) for x in (arm, 'published_li_T', 'published'))
+    k = sorted(set(a.index) & set(dmg_.index) & set(tgt_.index))
+    if not k:
+        return float('nan')
+    num = np.mean([a[i] - dmg_[i] for i in k])
+    den = np.mean([tgt_[i] - dmg_[i] for i in k])
+    return 100 * num / den
+
+acc_by = lambda arm: a21[arm].dropna() if arm in a21 else pd.Series(dtype=float)
+ncs_by = lambda arm: q21[q21.arm == arm].groupby('seed').ncs.mean()
+
+print('A21 -- arms alter ONLY the label-feature vector')
+print()
+print('%-20s %6s %9s %11s %11s' % ('arm', 'seeds', 'GNN acc', 'oob NCS', 'recovery'))
+for arm in A21:
+    if arm not in a21:
+        continue
+    v = a21[arm].dropna()
+    n = q21[q21.arm == arm].groupby('seed').ncs.mean()
+    rec = ('--' if arm in ('published', 'published_li_T')
+           else '%.0f%% / %.0f%%' % (paired_recovery(acc_by, arm),
+                                     paired_recovery(ncs_by, arm)))
+    print('%-20s %6d %9.4f %+11.4f %11s' % (arm, len(v), v.mean(), n.mean(), rec))
+
+print()
+print('paired vs published (the registered comparator):')
+for arm in A21[1:]:
+    if arm not in a21:
+        continue
+    d_ = (a21[arm] - a21['published']).dropna()
+    sd = d_.std(ddof=1)
+    t = d_.mean() / (sd / np.sqrt(len(d_))) if sd > 1e-12 else float('nan')
+    print('   %-20s %+6.2fpp  t=%6.2f  n=%d  sign %s'
+          % (arm, 100 * d_.mean(), t, len(d_),
+             'stable' if (np.sign(d_) == np.sign(d_.mean())).all() else 'UNSTABLE'))
+print()
+print('recovery of teacher_consistent vs published_li_T, per seed:')
+r = (a21['teacher_consistent'] - a21['published_li_T']).dropna()
+print('   %s   all positive: %s'
+      % (', '.join('%+.4f' % v for v in r), bool((r > 0).all())))
+""")
+
+md(r"""
+### Verdict: **Mechanism identified** — and explicitly not a method
+
+`teacher_consistent` recovers **102% of the accuracy damage and 97% of the NCS damage**,
+restoring out-of-bias net correction from −0.0073 back to +0.0032 against `published`'s
++0.0035. Its recovery is positive on all three seeds.
+
+**The half-measures are what make the attribution airtight.** Masking either half of the
+vector alone recovers only **38–65%**. It is specifically *matching the reliability*
+between training and inference that repairs the channel — not removing information from
+it. Three arms, one mechanism, and only the arm aimed at that mechanism works.
+
+It is **not** a method: +0.03pp over `published` with an unstable sign, i.e.
+indistinguishable from the shipped default. A21's prediction — "recovers most of the
+1.21pp but does not exceed `published`" — is exactly what happened.
+
+### What this licenses
+
+> Cross-model label reuse is harmful **because it is unmasked**, not because the labels
+> come from another model. The GNN trains on a label channel that is 100% reliable and
+> is evaluated on one that is 75.5% reliable; equalising the two removes the entire
+> 1.21-point cost.
+
+UniMP's masked label prediction and "Bag of Tricks" label reuse each achieve matched
+reliability by different means — which is why the published forms of this technique are
+safe and this one is not. The claim is a *condition under which a standard technique is
+sound*, which is a stronger and more portable statement than a defect in one flag.
+
+It also closes the channel as a source of gain: `teacher_consistent` returns to
+`published` and no further. With the mismatch removed there is no residual harm for a
+per-node gate to target, so the feature gate registered contingent in A19 is **withdrawn
+as unmotivated (A22)**. The practical recommendation stays `gnn_label_input=F` — which
+every shipped GLEM recipe already sets. The contribution is knowing *why*.
+
+**Recorded miss:** A21 registered `mask_pseudo` as the expected *weakest* of the three.
+It came second (53% / 65%) ahead of `mask_train` (41% / 38%). Small margin, and
+`mask_pseudo` has two seeds against three, but it was a stated expectation and it was
+wrong (A22).
+""")
+
+md(r"""
 ## What is established, and what is not
 
 **Established:**
@@ -658,12 +779,19 @@ md(r"""
    anything in the loss channel, costing **−1.21pp** final GNN accuracy and −2.25pp with
    the loss channel off. The original hypothesis holds — for *how* the label is
    delivered, not *which* nodes receive one.
+10. **And the cause is the unmasked channel, not the cross-model label** (A21/A22) —
+   the GNN trains on a label feature that is 100% reliable and is evaluated on one that
+   is 75.5% reliable. Equalising the two recovers **102%** of the cost; masking either
+   half alone recovers only 38–65%. That is a condition under which label reuse is
+   safe, which is why UniMP and "Bag of Tricks" do not pay this price.
 
 **Not established:**
 
-- **Whether a feature-channel gate recovers the −2.25pp.** Registered contingent in
-  A19, now motivated by Phase 8, not implemented. Unlike every loss gate it pays no
-  shrinkage tax, which is the one structural reason to expect it could work.
+- **Whether the label-feature channel can ever *help*.** Phase 9 removes its harm
+  entirely but recovers nothing above `li=F`, so the contingent per-node feature gate
+  from A19 is **withdrawn as unmotivated (A22)** — there is no residual harm to target.
+  Whether a *masked* channel beats `li=F` on a dataset where label reuse is known to pay
+  is untested; arxiv is not that dataset.
 - **Whether any loss-channel gate beats GLEM as shipped.** It will not become
   resolvable: `published` LM varies 1.8pp across seeds, and powering that comparison to
   t = 2 needs ~24 seeds on the GNN and several hundred on the LM.

@@ -354,11 +354,57 @@ Reading the margins: the loss channel **helps** (+1.16pp), the feature channel
 **Scope, stated as narrowly as the design permits.** This is one direction by
 architecture — no LM code path consumes pseudo-labels as input, so the channel does not
 exist in the E-step. It is `li=T`, which **no upstream GLEM config sets**, so it does
-not bear on the 76.97 reproduced in §13.5. The claim is about *cross-model pseudo-label
+not bear on the 76.97 reproduced in §13.6. The claim is about *cross-model pseudo-label
 reuse*, adjacent to but not identical with the gold-label masked reuse of UniMP and
 "Bag of Tricks".
 
-### 13.4 Headroom that exists and cannot be reached
+### 13.4 Why the feature channel harms: the reliability mismatch (A21)
+
+§13.3 established the cost but not the cause. A21 registered three arms that alter
+*only* what the label-feature vector contains, and the one targeting the train/inference
+reliability gap removes essentially all of the damage.
+
+| arm | GNN test acc | out-of-bias NCS | recovery of the li=T damage |
+|---|---|---|---|
+| `published` (li=F) | 0.7677 | +0.0035 | — (the target) |
+| `published_li_T` | 0.7556 | −0.0073 | — (the damage) |
+| **`teacher_consistent`** | **0.7680** | **+0.0032** | **102% / 97%** |
+| `mask_pseudo` (2 seeds) | 0.7635 | +0.0007 | 53% / 65% |
+| `mask_train` | 0.7606 | −0.0032 | 41% / 38% |
+
+`teacher_consistent` changes nothing except deleting the gold overwrite, which closes
+the channel's reliability gap from 24.5pp to −0.5pp. Its recovery against
+`published_li_T` is sign-stable on all three seeds (+0.0078 / +0.0149 / +0.0146), and
+it restores both measures simultaneously: accuracy to within 0.03pp of `published`, and
+out-of-bias NCS from −0.0073 back to +0.0032 against `published`'s +0.0035.
+
+**The half-measures are what make the attribution airtight.** Masking either half of the
+vector alone recovers only 38–65%. It is specifically *matching the reliability* of the
+channel between training and inference that repairs it, not removing information from
+it. Three arms, one mechanism, and only the arm aimed at that mechanism works.
+
+Against A21's registered outcomes this is **Mechanism identified**, and explicitly
+**not** *Method*: `teacher_consistent` sits +0.03pp above `published` with an unstable
+sign across seeds, i.e. indistinguishable from the shipped default. A21's prediction —
+"recovers most of the 1.21pp but does not exceed `published`" — is what happened.
+
+**What this licenses, and it is the paper's central claim.** Cross-model label reuse is
+harmful *because it is unmasked*, not because the labels come from another model. The
+GNN is trained on a label channel that is 100% reliable and evaluated on one that is
+75.5% reliable; equalising the two removes the entire cost. UniMP's masked label
+prediction and the label reuse of "Bag of Tricks" each achieve matched reliability by
+different means, which is why the published forms of this technique are safe and GLEM's
+is not. The finding is a condition under which a standard technique is sound, not a
+defect in one configuration flag.
+
+**And it closes the feature channel as a source of gain.** `teacher_consistent` returns
+to `published` and no further. Once the mismatch is removed there is no residual harm
+for a per-node gate to target and no accuracy above `li=F` to be had, so the contingent
+feature-gate follow-up registered in A19 is withdrawn as unmotivated (A22). The
+practical recommendation remains `gnn_label_input=F`, which is what every shipped GLEM
+recipe already sets — the contribution is knowing *why*.
+
+### 13.5 Headroom that exists and cannot be reached
 
 **Perfect gating pays.** Against a size-matched random control the oracle gains
 **+3.37pp (GNN) / +4.37pp (LM)** on arxiv (t = 22.5 / 115.9), and is positive on **17
@@ -379,16 +425,21 @@ pays a shrinkage tax: dropping ~24% of pseudo-labels at random costs 0.20pp (GNN
 The precision→accuracy relationship is sharply sublinear: 75.7%→82.1% teacher precision
 buys +0.23pp, while 82.1%→100% buys the remaining +3.1pp.
 
-### 13.5 Fidelity (§12)
+### 13.6 Fidelity (§12)
 
 `published`, arxiv, seed 0: **test 0.76997**, against the paper's 0.7697 ± 0.0019 for
 RevGAT+GLEM. Val 0.77593 against 0.7749 ± 0.0017. The instrument does not perturb the
 method it measures.
 
-### 13.6 Not established
+### 13.7 Not established
 
-- **Whether a feature-channel gate recovers the −2.25pp.** Registered contingent in
-  A19 and now motivated by §13.3; not implemented.
+- **Whether the label-feature channel can be made to *help*.** §13.4 shows its harm is
+  fully removable but recovers nothing above `li=F`. The contingent per-node feature
+  gate registered in A19 is withdrawn as unmotivated (A22): with the mismatch removed
+  there is no residual harm for it to target. Whether a *masked* channel could beat
+  `li=F` on a dataset where label reuse is known to pay is untested.
+- **`mask_pseudo` at 3 seeds.** Two of three landed; the third is outstanding. It does
+  not affect the §13.4 verdict, which rests on `teacher_consistent`.
 - **The low-label regime.** Arm 3 was withdrawn (A5). §8 predicted harm is strongest
   where the gold CE term is too weak to anchor the student, and every null in §13.1 is
   at ~54% labelled. **The largest untested lever.**
@@ -432,6 +483,38 @@ have one. Embeddings are therefore computed for every dataset the same way
 `1_Pooling/config.json`). Cross-checked against the shipped cornell tensor:
 **mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
 the choice changes no value — it only makes provenance uniform.
+
+**A22 (2026-08-20) — A21's result, one sub-prediction missed, and the contingent
+feature gate withdrawn.**
+
+A21's primary prediction held: `teacher_consistent` recovered most of the 1.21pp and
+did not exceed `published` (§13.4). Two things it got wrong or left open are recorded
+here rather than absorbed silently.
+
+**1. `mask_pseudo` was registered as the expected weakest of the three. It was not.**
+A21 argued it would be worst because it *widens* the reliability gap to 1.000 against
+nothing. Measured, it recovers 53% of the accuracy damage and 65% of the NCS damage,
+against `mask_train`'s 41% and 38% — second of three, not third. (Both figures are
+seed-paired over the two seeds it has; an unpaired 2-seed-against-3-seed comparison
+inflates them to 65% / 74%.) The margin is small
+and `mask_pseudo` currently has two seeds against `mask_train`'s three, so this is a
+missed ordering rather than a reversed mechanism; the arm that mattered,
+`teacher_consistent`, was correctly predicted. Recorded because a preregistration that
+only reports the predictions it got right is not one.
+
+**2. The contingent per-node feature gate (A19) is withdrawn as unmotivated.** A19
+registered it conditional on the feature channel showing harm, which §13.3 established.
+But §13.4 then showed the harm is *fully* attributable to the reliability mismatch and
+*fully* removed by correcting it: `teacher_consistent` reaches 0.7680 against
+`published`'s 0.7677. There is no residual harm left for a per-node gate to target, and
+no accuracy above `li=F` available from the channel at all. Running it would be
+measuring a remedy for a fault that no longer exists. The withdrawal is a consequence of
+the result, not a change of mind about the design, and the gate remains unimplemented —
+`y_hat` was never modified, only the feature-side call path (A21).
+
+What stays open is narrower and is recorded in §13.7: whether a *masked* label channel
+could beat `li=F` on a dataset where label reuse is known to pay. arxiv is not that
+dataset — here the channel is worth exactly nothing once repaired.
 
 **A21 (2026-08-19) — three new arms on the label-feature channel:
 `teacher_consistent`, `mask_pseudo`, `mask_train`. The comparator is `published`,
