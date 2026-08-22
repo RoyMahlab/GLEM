@@ -397,8 +397,17 @@ different means, which is why the published forms of this technique are safe and
 is not. The finding is a condition under which a standard technique is sound, not a
 defect in one configuration flag.
 
-**And it closes the feature channel as a source of gain.** `teacher_consistent` returns
-to `published` and no further. Once the mismatch is removed there is no residual harm
+**Scope condition, added after A23 arm C (A24).** The account above is **conditional on
+the labelled fraction**, not general. On wikics — 5% train split against arxiv's 53.7% —
+the same harm appears and is *four times larger* (−4.59pp), but `teacher_consistent`
+recovers only **41%** of it, because there is almost no gold in the channel to overwrite.
+The unreliability is the same quantity in both cases; only on arxiv is it concentrated
+in a discontinuity that equalising can remove. The general statement is that **harm
+scales with the unreliable fraction of the channel**, and the mismatch repair works in
+proportion to how much of that channel is gold. See A24.
+
+**And on arxiv it closes the feature channel as a source of gain.** `teacher_consistent`
+returns to `published` and no further. Once the mismatch is removed there is no residual harm
 for a per-node gate to target and no accuracy above `li=F` to be had, so the contingent
 feature-gate follow-up registered in A19 is withdrawn as unmotivated (A22). The
 practical recommendation remains `gnn_label_input=F`, which is what every shipped GLEM
@@ -433,11 +442,13 @@ method it measures.
 
 ### 13.7 Not established
 
-- **Whether the label-feature channel can be made to *help*.** §13.4 shows its harm is
-  fully removable but recovers nothing above `li=F`. The contingent per-node feature
-  gate registered in A19 is withdrawn as unmotivated (A22): with the mismatch removed
-  there is no residual harm for it to target. Whether a *masked* channel could beat
-  `li=F` on a dataset where label reuse is known to pay is untested.
+- **Whether the label-feature channel can be made to *help*.** On arxiv its harm is
+  fully removable but recovers nothing above `li=F`, so the A19 gate was withdrawn
+  (A22). A24 narrows that to **high-labelled-fraction settings**: on wikics 59% of the
+  harm survives the repair, so a gate has something to target there. Neither implemented.
+- **The fraction-scaling law.** A24 predicts harm ∝ (teacher share) × (1 − teacher
+  accuracy); two points match to within 20%. `bookhis` (60% train split, both pretrains
+  on disk) is the cheapest third point and is not registered.
 - **`mask_pseudo` at 3 seeds.** Two of three landed; the third is outstanding. It does
   not affect the §13.4 verdict, which rests on `teacher_consistent`.
 - **The low-label regime.** Arm 3 was withdrawn (A5). §8 predicted harm is strongest
@@ -483,6 +494,155 @@ have one. Embeddings are therefore computed for every dataset the same way
 `1_Pooling/config.json`). Cross-checked against the shipped cornell tensor:
 **mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
 the choice changes no value — it only makes provenance uniform.
+
+**A25 (2026-08-21) — the homophily gate on GNN-as-Judge's disagreement set. Run in a
+separate repository against that method's own code; registered here because the
+hypothesis, the signal and the decision rule are this study's.**
+
+GNN-as-Judge (few-shot semi-supervised learning on TAGs) splits unlabeled nodes by
+LLM/GNN agreement. On the **disagreement** set it applies ORPO preference tuning with
+the **GNN's** prediction as preferred and the LLM's as dispreferred — uniformly, with no
+per-node weighting. That is the condition §13.2 identifies as the one GLEM does *not*
+satisfy: GLEM discounts the weak direction with β = 0.05, and this framework does not
+discount at all.
+
+**Motivating analysis, and it is post-hoc.** Computed from GLEM's own teacher snapshots
+on arxiv — *not* from GNN-as-Judge — by splitting its disagreement rule along local
+homophily. Three seeds, `published` arm:
+
+| signal | disagreement subset | share | GNN right | LM right | value of preferring the GNN |
+|---|---|---|---|---|---|
+| oracle (gold-label homophily) | low | 78% | 0.362–0.384 | 0.343–0.360 | **+0.004 – +0.042** |
+| oracle | high | 22% | 0.747–0.774 | 0.148–0.181 | **+0.57 – +0.63** |
+| **GLANCE (label-free)** | low | **87%** | 0.418–0.435 | 0.316–0.332 | **+0.090 – +0.119** |
+| **GLANCE** | high | 13% | 0.661–0.691 | 0.197–0.248 | **+0.41 – +0.49** |
+
+The oracle row is a **ceiling, not a result**: `probe.signals.local_homophily` uses gold
+labels for every node and is not deployable. The gate below uses GLANCE soft homophily
+(`soft_local_homophily`), which needs no labels, and on which the separation is ~4.5×
+rather than ~30×.
+
+Also recorded, as an empirical check on that paper's Theorem 2 rather than a criticism
+of its proof: on arxiv the agreement set is **91% of nodes** — so it barely selects —
+gains **+2.9pp** over the GNN alone, and **20.4% of it is both models wrong with the
+same label**. 88% of the GNN's errors are also the LM's (§13.2), and correlated errors
+are the regime in which agreement-based selection is weakest.
+
+**Arms.** All three run on GNN-as-Judge's own code, its own datasets, its own
+hyperparameters. Nothing from this repository is transplanted except the signal.
+
+| arm | disagreement set treated how |
+|---|---|
+| `published` | as that paper ships it — ORPO on every selected disagreement node |
+| `judge_gate` | ORPO only on nodes with GLANCE soft homophily **above the median** of the disagreement set; the rest are excluded from ORPO |
+| `judge_gate_random` | **size-matched**: exclude the same *number* of disagreement nodes, chosen uniformly at random |
+
+**The random control is not optional, and is the thing most likely to be skipped.** The
+gate removes ~87% of disagreement nodes, and shrinking a training set changes the result
+on its own — on GLEM, dropping ~24% of pseudo-labels at random cost 0.20pp (GNN) and
+0.68pp (LM) *before any selection effect*. A14 exists because of exactly this. The
+interpretable comparison is **`judge_gate` against `judge_gate_random`**; `judge_gate`
+against `published` measures selection *and* shrinkage together and must be reported
+separately, never instead.
+
+**Signal definition, fixed so the two repositories compute the same thing.** GLANCE
+`h_v = p_v · mean_{u∈N(v)} p_u` where `p` is the softmax of the **GNN's** logits over
+the same graph, following `probe.signals.soft_local_homophily`; isolated nodes yield NaN
+and are imputed with the median before ranking, as `probe.gating` already does; the
+threshold is the median **over the disagreement set**, recomputed per run, never
+transplanted from arxiv.
+
+**Prediction, fixed before any GNN-as-Judge result is seen.** `judge_gate` beats
+`judge_gate_random` by **+0.5 to +2.0pp** on the LLM's test accuracy, and beats
+`published` by **0 to +1.5pp**. The second interval starts at zero deliberately: on the
+low-homophily subset the GNN is still marginally better than the LLM (+0.09 by GLANCE),
+so excluding those nodes discards a small amount of real signal along with a large
+amount of noise, and which dominates is genuinely open. Few-shot baselines are lower
+than GLEM's, so effects should be larger in absolute terms than anything in §13.
+
+**Decision rule.**
+
+- **Supported** — `judge_gate` > `judge_gate_random` with sign-stable per-seed
+  differences over ≥3 seeds, **and** `judge_gate` ≥ `published`. The uniformity
+  assumption costs measurable accuracy in a framework that does not discount its weak
+  teacher, and an exogenous signal recovers it.
+- **Weakly supported** — beats the random control sign-stably but not `published`. The
+  signal selects, but not enough to pay for the shrinkage. Report as a selection result,
+  not a method.
+- **Not supported** — fails against the random control. Then the disagreement split is
+  not exploitable by this signal, and §13.1's null extends to a framework with no
+  protective weighting at all — which would make the null considerably stronger than it
+  currently is.
+
+**What a null here would mean, stated in advance so it cannot be reframed later.**
+§13.2 attributes the §13.1 null to GLEM's asymmetric α/β. If harm is *also* absent where
+no such protection exists, that attribution is wrong and §13.2 must be rewritten. This
+arm can therefore falsify the explanation this study currently rests on, and that is why
+it is worth running.
+
+**A24 (2026-08-21) — A23 arm C: the feature-channel harm replicates on wikics, its
+mechanism does not, and §13.4's account is corrected from *arxiv-specific* to
+*split-conditional*.**
+
+A23 required both clauses to hold. **Clause 1 holds, clause 2 fails, so arm C is Not
+replicated** — and the failure locates a second component of the mechanism that arxiv
+could not have exposed.
+
+| | arxiv | wikics |
+|---|---|---|
+| `published` GNN | 0.7677 | 0.7861 |
+| `published_li_T` GNN | 0.7556 (**−1.21pp**) | 0.7402 (**−4.59pp**, t = −4.84) |
+| `teacher_consistent` recovery | **102%** | **41%** |
+
+Clause 1 replicates and then some: every one of six seed-differences is negative and the
+harm is nearly **four times larger** than on arxiv. Clause 2 fails: the repair that
+recovered everything on arxiv recovers 41% here.
+
+**The diagnostic, and it is not a property of the datasets but of their splits.**
+
+| | gold share of the label vector | teacher accuracy (train / eval) | share `teacher_consistent` alters |
+|---|---|---|---|
+| arxiv | 53.7% | 0.750 / 0.755 | 53.7% |
+| wikics | **5.0%** | 0.666 / 0.625 | **5.0%** |
+
+wikics has a 5% train split. There is almost no gold in the channel to overwrite, so
+deleting the overwrite changes 5% of the vector; the remaining 95% is teacher prediction
+at 0.625 accuracy. On arxiv the unreliability is concentrated in a *discontinuity*
+(perfect gold beside a 0.755 teacher) and removing the discontinuity removes the harm.
+On wikics there is no discontinuity worth removing — the channel is simply noisy.
+
+**§13.4's claim is therefore corrected.** It reads as though the reliability mismatch is
+*the* mechanism. It is one of two, and which dominates is set by the **labelled
+fraction**, not by the dataset:
+
+> Harm in the feature channel scales with the *unreliable fraction* of the channel.
+> Where gold occupies a large share, that unreliability appears as a train/inference
+> discontinuity and equalising the two removes it. Where gold is a small share, there is
+> no discontinuity to equalise and the harm is irreducible noise.
+
+Quantitatively, with the obvious caveat that two points determine a line:
+
+```
+expected wrong entries = (teacher share) x (1 - teacher accuracy)
+  arxiv    0.463 x 0.245 = 0.113   ->  observed harm 1.21pp
+  wikics   0.950 x 0.375 = 0.356   ->  observed harm 4.59pp
+  ratio             3.14           ->  ratio         3.79
+```
+
+The ratio is *predicted by the mechanism* rather than fitted to the outcome, which is
+why it is recorded despite n = 2. A third point would test it; `bookhis` (41.5k nodes,
+60% train split, both pretrains already on disk, ~2–3h per run) is the cheapest
+available and is **not** currently registered.
+
+**Credit where due:** the correction from "arxiv-specific" to "split-conditional" was
+the user's, not the analysis's. The first reading treated a scope *condition* as a
+*limitation*, which is weaker and less testable.
+
+**Consequence for A21/A22.** A22 withdrew the contingent per-node feature gate on the
+grounds that `teacher_consistent` leaves no residual harm. That holds **on arxiv only**.
+On wikics 59% of the harm survives the repair, so a gate has something to target there
+after all. The withdrawal is narrowed to high-labelled-fraction settings rather than
+reversed; nothing is implemented either way.
 
 **A23 (2026-08-20) — three arms addressing what §13.4 leaves open: `unimp_mask`,
 `beta_high`, and the feature-channel result replicated on wikics.**
@@ -1382,6 +1542,70 @@ excluded from the verdict** per §5, and enter only the pooled across-dataset fi
 `gnn_pl_ratio=0.2` resampled every epoch).
 
 ---
+
+## 15. Transferability: what these findings say about other frameworks
+
+§13's results are about GLEM. Their value depends on whether the *mechanism* transfers,
+and the mechanism makes a falsifiable prediction about any framework that distils
+between a language model and a GNN.
+
+**The principle, stated as generally as the evidence supports.**
+
+> Pseudo-label harm is a function of **exposure**, not of an identifiable node
+> population. Exposure has two axes: *which channel* delivers the teacher's label — a
+> loss term scaled by a weight, or an input feature scaled by nothing — and *how heavily*
+> the student is made to attend to it. A framework is safe on an axis exactly to the
+> extent it discounts a teacher that is weaker than its student on that axis.
+
+GLEM is protected on the loss axis and unprotected on the feature axis, which is why
+§13.1 is null and §13.3 is not. §13.2 identifies the protection: α = 0.50–0.80 in the
+direction where the teacher is usually stronger, β = 0.05 where it is always weaker.
+
+**This predicts where harm should appear elsewhere,** and the prediction is testable
+without re-running anything: a framework that commits to one teacher on contested nodes,
+with no per-node or per-direction discounting, should show the harm §4 predicted and
+§13.1 failed to find.
+
+**GNN-as-Judge is such a framework.** It partitions unlabeled nodes by LLM/GNN agreement
+and, on the disagreement set, applies ORPO preference tuning with the GNN's prediction
+preferred and the LLM's dispreferred — uniformly. There is no β.
+
+Measured on GLEM's own teacher snapshots as a proxy (arxiv, `published`, 3 seeds; **not**
+on GNN-as-Judge itself), splitting its disagreement rule along label-free GLANCE soft
+homophily:
+
+| disagreement subset | share | GNN right | LM right | value of preferring the GNN |
+|---|---|---|---|---|
+| high soft homophily | 13% | 0.661–0.691 | 0.197–0.248 | **+0.41 – +0.49** |
+| low soft homophily | **87%** | 0.418–0.435 | 0.316–0.332 | **+0.09 – +0.12** |
+
+The rule is worth four to five times more on the minority of nodes where the GNN is
+inside its inductive bias than on the majority where it is not — and on that majority
+the GNN it defers to is wrong ~58% of the time. Under a gold-label homophily split the
+separation is ~30× rather than ~4.5×, but that signal is not deployable and is reported
+only as a ceiling.
+
+Their Theorem 2 — that the agreement set is strictly more accurate than either model
+alone — holds directionally here (0.796 against 0.767 and 0.755) but is narrower than it
+appears: the agreement set is **91% of nodes**, so it selects very little, and **20.4% of
+it is both models wrong with the same label**. §13.2 measured 88% of the GNN's errors to
+be the LM's errors as well; correlated errors are precisely the regime in which
+agreement-based selection buys least.
+
+**Three limits on the above, none of which the numbers can hide.**
+
+1. The models are GLEM's DeBERTa and RevGAT, not GNN-as-Judge's LLM and GNN. The
+   *structural* argument transfers; the magnitudes do not.
+2. GLEM here is ~54% labelled; GNN-as-Judge is few-shot. §8 predicted harm is strongest
+   where the gold CE term is too weak to anchor the student, so few-shot should if
+   anything *increase* the exposure — but that direction is a prediction, not a result.
+3. This analysis is post-hoc. The gate it motivates is preregistered separately, with a
+   size-matched random control, in **A25**, and is run against that method's own code.
+
+**What would falsify the principle.** If A25's gate fails against its random control,
+then harm is absent even where no protective weighting exists, §13.2's attribution of
+the §13.1 null to GLEM's asymmetric α/β is wrong, and §13.2 must be rewritten. The
+principle in this section is stated so that it can lose.
 
 ## Appendix A — instrumentation contract
 
