@@ -72,6 +72,17 @@ case "$ARM" in
     # A21: li=T with the gold entry zeroed on train nodes (UniMP-style self-label
     # masking), teacher's prediction kept elsewhere.
     ARM_ARGS="--gnn_label_input=T"; export GLEM_PROBE_LABELFEAT=mask_train ;;
+  unimp_mask)
+    # A23: li=T with gold kept on a random half of train nodes and everything else
+    # zeroed. Matched channel (gold-or-empty in training and at inference) that still
+    # carries real labels. The one arm that could plausibly beat `published`.
+    ARM_ARGS="--gnn_label_input=T"; export GLEM_PROBE_LABELFEAT=unimp_mask ;;
+  beta_high)
+    # A23: the LOSS channel at alpha-level weight. Section 13.2 argues the loss channel
+    # is harmless because beta=0.05 down-weights a teacher that is worse than its
+    # student; nothing has ever varied beta to check. gnn_label_input untouched, so on
+    # arxiv this is li=F and the feature channel is absent.
+    ARM_ARGS="--gnn_pl_weight=0.8" ;;
   oracle)
     # Published hyperparameters, but the pseudo-label set is restricted to nodes
     # the teacher gets RIGHT. Uses ground truth, so it is an upper bound on any

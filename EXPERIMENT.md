@@ -484,6 +484,102 @@ have one. Embeddings are therefore computed for every dataset the same way
 **mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
 the choice changes no value — it only makes provenance uniform.
 
+**A23 (2026-08-20) — three arms addressing what §13.4 leaves open: `unimp_mask`,
+`beta_high`, and the feature-channel result replicated on wikics.**
+
+§13.4 identified the mechanism but leaves the study with three weaknesses, and each of
+these arms targets exactly one. Predictions and decision rules are fixed here, before
+any of them runs.
+
+---
+
+**Arm A — `unimp_mask`. Can the channel be made to *help*?**
+
+§13.4 closes the feature channel as a source of harm and simultaneously as a source of
+gain: `teacher_consistent` reaches `published` and stops. But it gets there by
+*discarding* the gold labels, which is not what the literature does. UniMP keeps them
+and masks a subset; the channel still carries real label information.
+
+`unimp_mask` keeps gold on a random **half** of train nodes and zeroes everything else —
+the other half of train, and every unlabelled node. The channel is then gold-or-empty in
+training and gold-or-empty at inference, i.e. **matched**, while still carrying real
+labels rather than none.
+
+*Honest scope: this is not UniMP.* UniMP redraws its mask every step and predicts only
+the masked nodes; GLEM builds `self.features` once per M-step
+(`gnn_trainer.__init__`) and its loss targets are fixed independently, so neither is
+reachable without modifying the trainer. The mask here is **static**, drawn once from
+the run seed. It is channel-matched, which is the property under test, but the paper
+must say "the mechanism UniMP's masking exists to prevent", never "we apply UniMP".
+
+**Prediction: `unimp_mask` lands between `published` and +0.5pp above it (0.7677 to
+0.7727 GNN).** Label reuse is on the ogbn-arxiv leaderboard because it pays, and this
+is the first arm that both matches the channel and retains label information. Failing to
+exceed `published` would mean the channel is worth nothing on arxiv under *any*
+treatment, which is a stronger negative than §13.4 currently supports.
+
+**Decision rule.** *Method* — exceeds `published` with sign-stable per-seed differences
+over 3 seeds. *Channel worthless* — at or below `published`. Nothing in between.
+
+---
+
+**Arm B — `beta_high`. Does the loss channel harm when it is not down-weighted?**
+
+§13.2 explains the entire §13.1 null by GLEM's asymmetric weights: α = 0.50–0.80 where
+the teacher is usually stronger, β = 0.05–0.70 where it is always weaker. **That
+explanation has never been tested.** β has not been varied in any arm; the claim rests
+on a correlation between two things that were never manipulated.
+
+`beta_high` sets `--gnn_pl_weight=0.8`, matching α, and changes nothing else.
+`gnn_label_input` is untouched, so on arxiv this is `li=F` and the feature channel is
+absent — the loss channel alone, at feature-channel-like exposure.
+
+**Prediction: out-of-bias NCS in `lm→gnn` turns negative, with the out-of-bias minus
+in-bias gap negative and sign-stable, and final GNN accuracy falls by 1–3pp.** On arxiv
+the LM teacher is 0.629 against a 0.648 student out-of-bias; weighting a worse teacher
+sixteen times more heavily should transmit its errors.
+
+**Decision rule.** *§13.2 confirmed* — out-of-bias NCS < 0 with a negative, sign-stable
+bin gap. Harm is then a function of **exposure**, and §13.3's feature-channel result and
+§13.1's loss-channel null become one principle rather than two findings: the same wrong
+label is harmless or harmful according to how strongly the student is made to attend to
+it. *§13.2 refuted* — NCS stays positive at β = 0.8. The loss channel is then robust for
+some reason other than its weight, and §13.2 must be rewritten.
+
+This is the arm whose result I would otherwise be able to explain either way, which is
+why the rule is written down first.
+
+---
+
+**Arm C — wikics. The feature-channel result on a second dataset.**
+
+§13.3 and §13.4 rest on **one dataset**, against a §13.1 null spanning eight. That is
+the study's largest asymmetry and the cheapest to fix: wikics is the only unused TAG set
+with a non-degenerate homophily axis (median 0.746 against cora/citeseer/pubmed's
+1.000), both pretrains are already on disk, and runs are ~1h against arxiv's 11.4h.
+
+Arms: `published`, `published_li_T`, `teacher_consistent`, `alpha0_li_T`, 3 seeds — 12
+runs, ≈12 GPU-hours, a third of one arxiv arm.
+
+This **extends A19's scope**, which registered the feature-channel arms for arxiv only.
+The extension is deliberate and is recorded here rather than taken silently.
+
+**Prediction: `published_li_T` < `published` on wikics with a sign-stable per-seed
+difference, and `teacher_consistent` recovers a majority of it.** Magnitude is not
+predicted — wikics has 10 classes against arxiv's 40 and a 5% train split against 54%,
+so the label-feature vector is a different shape and a different fraction of it is gold.
+
+**Decision rule.** *Replicated* — both clauses hold. *Not replicated* — either fails.
+A null here does not overturn §13.3, which stands on its own placebo-controlled arxiv
+evidence, but it does confine the claim to arxiv and that must be stated in §13.3 rather
+than buried.
+
+---
+
+**Not §11 controls.** All three carry either a non-`published` `gnn_label_input` or a
+non-`published` β, so `report.py` — which matches `published` exactly — leaves the
+existing verdicts untouched.
+
 **A22 (2026-08-20) — A21's result, one sub-prediction missed, and the contingent
 feature gate withdrawn.**
 

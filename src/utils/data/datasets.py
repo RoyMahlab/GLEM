@@ -203,10 +203,27 @@ class SeqGraph():
             y[~is_gold] = 0.0
         elif mode == 'mask_train':
             y[is_gold] = 0.0
+        elif mode == 'unimp_mask':
+            # A23: keep gold on a random HALF of train nodes, zero everything else --
+            # the other half of train, and every unlabelled node. The channel is then
+            # gold-or-empty at training and gold-or-empty at inference, i.e. matched,
+            # while still carrying real label information (which teacher_consistent
+            # discards). Closest analogue of UniMP's masked label prediction that
+            # GLEM's structure admits; see A23 for why the mask is static rather than
+            # redrawn per epoch.
+            #
+            # The mask is drawn over ALL node ids from the run seed, then indexed by
+            # `nodes`, so it is identical whichever subset is requested and across
+            # ranks. self.features is built once per step, so a per-epoch redraw would
+            # need a trainer change, not a change here.
+            import numpy as _np
+            keep = _np.random.default_rng(int(self.cf.seed)).random(self.n_nodes) < 0.5
+            keep = self._from_numpy(keep[_np.asarray(nodes)], on_cpu)
+            y[~(is_gold & keep)] = 0.0
         else:
             raise ValueError(
                 f'unknown GLEM_PROBE_LABELFEAT={mode!r}; expected '
-                f'teacher_consistent|mask_pseudo|mask_train')
+                f'teacher_consistent|mask_pseudo|mask_train|unimp_mask')
         return y
 
     def node_feature(self, nodes, on_cpu=False):

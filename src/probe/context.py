@@ -26,6 +26,7 @@ ENV_LABELFEAT = 'GLEM_PROBE_LABELFEAT'
 ARMS = ('published', 'alpha0_li_T', 'alpha0_li_F', 'published_li_F',
         'published_li_T', 'alpha0_li_T_only',
         'teacher_consistent', 'mask_pseudo', 'mask_train',
+        'unimp_mask', 'beta_high',
         'oracle', 'oracle_random',
         'conf_gate60', 'conf_gate80', 'conf_gate90',
         'sig_gate80', 'sig_gate90',
