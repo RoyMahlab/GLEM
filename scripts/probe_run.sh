@@ -83,6 +83,15 @@ case "$ARM" in
     # student; nothing has ever varied beta to check. gnn_label_input untouched, so on
     # arxiv this is li=F and the feature channel is absent.
     ARM_ARGS="--gnn_pl_weight=0.8" ;;
+  beta_high_sig80)
+    # A27: beta=0.8 AND the M-step ambiguity gate at 80% keep. Comparator is `published`
+    # (beta=0.05, ungated), not beta_high -- the question is whether selective admission
+    # beats GLEM's uniform down-weighting, not whether it repairs damage we introduced.
+    ARM_ARGS="--gnn_pl_weight=0.8"; export GLEM_PROBE_GATE="signal80:lm" ;;
+  beta_high_rand80)
+    # A27 control: beta=0.8 with the SAME 80% keep-rate, chosen at random. Without it,
+    # beta_high_sig80 confounds which nodes were kept with how many.
+    ARM_ARGS="--gnn_pl_weight=0.8"; export GLEM_PROBE_GATE="random80:lm" ;;
   oracle)
     # Published hyperparameters, but the pseudo-label set is restricted to nodes
     # the teacher gets RIGHT. Uses ground truth, so it is an upper bound on any

@@ -48,7 +48,7 @@ declare -A ARMS=(
   [citeseer]="published alpha0_li_T oracle oracle_random conf_gate60 conf_gate80 conf_gate90"
   [pubmed]="published alpha0_li_T oracle oracle_random conf_gate60 conf_gate80 conf_gate90"
   # published_li_T / alpha0_li_T_only are A19 and are registered for arxiv ONLY.
-  [arxiv]="published alpha0_li_T oracle oracle_random conf_gate60 conf_gate80 conf_gate90 sig_gate80 sig_gate80_gnn sig_gate80_lm sig_gate90 published_li_T alpha0_li_T_only teacher_consistent mask_pseudo mask_train unimp_mask beta_high"
+  [arxiv]="published alpha0_li_T oracle oracle_random conf_gate60 conf_gate80 conf_gate90 sig_gate80 sig_gate80_gnn sig_gate80_lm sig_gate90 published_li_T alpha0_li_T_only teacher_consistent mask_pseudo mask_train unimp_mask beta_high beta_high_sig80 beta_high_rand80"
   # RevGAT on the WebKB sets. These configs set gnn_label_input=F, so 2a/2b
   # coincide and published_li_F would equal published -- two arms only, as for
   # the other RevGAT datasets.

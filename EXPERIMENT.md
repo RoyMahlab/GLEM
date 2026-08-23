@@ -551,6 +551,75 @@ have one. Embeddings are therefore computed for every dataset the same way
 **mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
 the choice changes no value — it only makes provenance uniform.
 
+**A27 (2026-08-23) — `beta_high_sig80` and `beta_high_rand80`: does per-node selection
+beat uniform down-weighting? The comparator is `published`, not `beta_high`.**
+
+Every deployable gate in this study has failed, and §13.8 now explains why: at GLEM's
+shipped β = 0.05 there was **nothing to fix**. Out-of-bias NCS is +0.0035 and the loss
+channel is already protected, so a gate can only redistribute a benefit that is not being
+lost. A23 arm B created a setting where harm exists in that channel (β = 0.8: out-of-bias
+NCS −0.0087, accuracy −1.38pp). These arms ask whether the gate recovers it.
+
+**The comparator is the whole point of this amendment.** GLEM's own answer to an
+unreliable teacher is to discount it **uniformly** — β = 0.05 — which also discards the
+teacher where it is *good*. A gate keeps the good part. The question is therefore not
+"does the gate repair β = 0.8", which would be repairing damage this study introduced and
+is answerable for free by lowering β. It is:
+
+> Is **selective admission at high β** better than **uniform discounting at low β**?
+
+Both are configurations of the same knob-space, so this is a fair comparison and needs no
+defence about non-standard settings. Registered comparator: **`published` (β = 0.05,
+ungated, 0.7677 GNN, 3 seeds)**.
+
+| arm | β | M-step pseudo-label set |
+|---|---|---|
+| `published` (exists) | 0.05 | all of it — GLEM's uniform discounting |
+| `beta_high` (exists) | 0.8 | all of it — no discounting |
+| `beta_high_sig80` | 0.8 | top 80% by inverted kNN ambiguity |
+| `beta_high_rand80` | 0.8 | a random 80% — **size-matched control** |
+
+The gate acts on the M-step only (`signal80:lm`), because β is the M-step weight and the
+LM is that step's teacher; the axis is therefore kNN semantic ambiguity, per §4. The
+E-step runs exactly as `published` does.
+
+**`beta_high_rand80` is not optional.** It required a new gate mode (`random<k>`), since
+the existing `random` sizes itself from the oracle's keep count rather than a fixed rate.
+Without a rate-matched control, `beta_high_sig80` beating `beta_high` confounds "kept the
+right nodes" with "trained on fewer nodes" — the confound A14 exists to prevent, and the
+one most likely to be skipped because the headline comparison is against `published`
+instead.
+
+**Prediction, fixed before the runs.** `beta_high_sig80` beats `beta_high` by **+0.5 to
++1.2pp** (recovering roughly half the 1.38pp), beats `beta_high_rand80` sign-stably, and
+**does not reach `published`** — landing between 0.7590 and 0.7660 against 0.7677. The
+reasoning: the gate lifts kept-set teacher precision by ~5pp (0.755 → 0.805 at 80% keep,
+A18 preflight), and §13.5 measured the precision→accuracy conversion to be sharply
+sublinear, so ~5pp of precision should not recover a 1.38pp deficit in full. Uniform
+discounting is expected to remain the better strategy.
+
+**Decision rule.**
+
+- **Selection beats discounting** — `beta_high_sig80` > `published` with sign-stable
+  per-seed differences over 3 seeds, **and** > `beta_high_rand80` sign-stably. This is
+  the study's first positive deployable result and would justify building around the
+  gate.
+- **Selection works but does not win** — beats `beta_high_rand80` sign-stably but not
+  `published`. The signal selects real information; uniform down-weighting is still the
+  better and simpler policy. Report as a selection result, never as a method.
+- **Selection does not work** — fails against `beta_high_rand80`. Then the gate fails
+  even where harm demonstrably exists, and the negative result in §13.5 strengthens from
+  "no gate helps where there is nothing to fix" to "no gate helps even where there is".
+
+**Why the third outcome would be the most informative.** §13.5 currently reports that
+gating recovers under a tenth of the oracle's headroom, and the natural objection is that
+it was tested where the loss channel was already protected. This arm removes that
+objection. If the gate still fails, the claim becomes unconditional.
+
+**Scope.** arxiv only, and β = 0.8 remains a manipulation rather than a configuration
+anyone ships — A26's caution applies unchanged. Nothing here tests whether the result is
+split-conditional; §13.7 records that gap.
+
 **A26 (2026-08-23) — A23 arms A and B report: `unimp_mask` misses its registered
 prediction and closes the feature channel; `beta_high` confirms §13.2 on every clause
 and converts it from an inference into a result.**

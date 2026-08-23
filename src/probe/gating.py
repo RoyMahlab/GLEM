@@ -143,6 +143,32 @@ def apply_gate(pl_nodes, pseudo_logits, labels, cf):
         # Same count as the oracle would keep, chosen without regard to correctness.
         rng = np.random.default_rng(int(cf.seed))
         kept = np.sort(rng.choice(pl_nodes, size=n_keep, replace=False))
+    elif mode.startswith('random'):
+        # ``random<k>[:gnn|:lm]`` -- keep a uniformly random k% (A27's size-matched
+        # control for the signal gate). Distinct from the bare ``random`` mode above,
+        # which sizes itself from the ORACLE's keep count rather than a fixed rate.
+        # Without a rate-matched control, `signal<k>` beating an ungated run confounds
+        # "kept the right nodes" with "trained on fewer nodes" -- the reason A14 exists.
+        spec = mode[len('random'):]
+        frac_s, _, which = spec.partition(':')
+        which = (which or 'both').lower()
+        teaching = 'GNN' if cf.em_phase == 'LM' else 'LM'
+        if which != 'both' and which != teaching.lower():
+            print(f'[probe] gate={mode}: {teaching} is teaching, NOT gated '
+                  f'(this arm gates {which.upper()} only) -- '
+                  f'pseudo-label nodes {len(pl_nodes)} kept as-is '
+                  f'(teacher accuracy on them {correct.mean():.4f})')
+            return pl_nodes, {'gate': mode, 'gate_active': False,
+                              'gate_teaching': teaching,
+                              'n_before': int(len(pl_nodes)),
+                              'n_kept': int(len(pl_nodes)),
+                              'teacher_acc_on_pl': float(correct.mean()),
+                              'teacher_acc_on_kept': float(correct.mean())}
+        frac = int(frac_s) / 100.0
+        n_keep = max(1, int(round(frac * len(pl_nodes))))
+        rng = np.random.default_rng(int(cf.seed))
+        kept = np.sort(rng.choice(pl_nodes, size=n_keep, replace=False))
+        sig_name = 'uniform_random'
     elif mode.startswith('signal'):
         # ``signal<k>``        gate every step   -- fix BOTH teachers
         # ``signal<k>:gnn``    gate only when the GNN teaches -- fix the GNN teacher
@@ -183,7 +209,8 @@ def apply_gate(pl_nodes, pseudo_logits, labels, cf):
         kept = np.sort(pl_nodes[np.argsort(-score, kind='mergesort')[:n_keep]])
     else:
         raise ValueError(
-            f'unknown GLEM_PROBE_GATE={mode!r}; expected oracle|random|signal<k>')
+            f'unknown GLEM_PROBE_GATE={mode!r}; expected '
+            f'oracle|random|random<k>[:gnn|:lm]|signal<k>[:gnn|:lm]')
 
     emi = getattr(cf, 'emi', None)
     if emi is not None:
@@ -191,7 +218,7 @@ def apply_gate(pl_nodes, pseudo_logits, labels, cf):
 
     info = {'gate': mode, 'n_before': int(len(pl_nodes)), 'n_kept': int(len(kept)),
             'teacher_acc_on_pl': float(correct.mean())}
-    if mode.startswith('signal'):
+    if mode.startswith('signal') or (mode.startswith('random') and mode != 'random'):
         info['gate_active'] = True
         # teacher_acc_on_kept is diagnostic only -- it uses gold labels, so it is
         # recorded for the analysis, never consulted by the gate itself.
