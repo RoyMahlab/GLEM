@@ -451,6 +451,11 @@ method it measures.
   on disk) is the cheapest third point and is not registered.
 - **`mask_pseudo` at 3 seeds.** Two of three landed; the third is outstanding. It does
   not affect the §13.4 verdict, which rests on `teacher_consistent`.
+- **Whether the β result is split-conditional.** §13.8 rests on arxiv alone. A24 showed
+  the feature-channel repair depends on the labelled fraction; nothing tests whether
+  raising β behaves the same way on wikics, and it is the obvious place it might not.
+- **β = 0.3.** Two exposure points are a comparison, not a dose-response curve. Not
+  registered.
 - **The low-label regime.** Arm 3 was withdrawn (A5). §8 predicted harm is strongest
   where the gold CE term is too weak to anchor the student, and every null in §13.1 is
   at ~54% labelled. **The largest untested lever.**
@@ -459,6 +464,57 @@ method it measures.
 - **Large heterophilous TAGs.** WebKB is 18–26 test nodes; arxiv is homophilous.
 - **Attribution on the M-step.** The α=β=0 control is a clean single-variable ablation
   only for the E-step; on the M-step the GNN still consumes LM embeddings (A9/A10).
+
+### 13.8 The unifying principle: harm is a function of exposure
+
+§13.1 and §13.3 read as two findings — a null in the loss channel, a positive in the
+feature channel. A23 arm B collapses them into one.
+
+`beta_high` raises β from GLEM's shipped 0.05 to 0.8, matching α, and changes nothing
+else; `gnn_label_input` is untouched, so the feature channel is absent and this is the
+**loss channel alone at feature-channel-like exposure**. The harm §4 predicted appears:
+
+| configuration | exposure to the weaker teacher | out-of-bias NCS | GNN test acc |
+|---|---|---|---|
+| loss channel, β = 0.05 (as shipped) | low | **+0.0035** | 0.7677 |
+| loss channel, β = 0.8 | high | **−0.0087** | **0.7539** (−1.38pp, t = −6.00) |
+| feature channel, unmasked | unscaled | −0.0073 | 0.7556 (−1.21pp) |
+| feature channel, reliability matched | unscaled but reliable | **+0.0032** | 0.7680 (+0.03pp) |
+
+Every row is 3 seeds. `beta_high`'s out-of-bias NCS is negative on all three
+(−0.0087 ± 0.0017, exact McNemar p = 1.1 × 10⁻⁴⁶), its out-of-bias minus in-bias gap is
+−0.0059 with a stable sign, and its difference from `published` out-of-bias is −0.0122,
+also stable. A23's prediction for this arm — negative out-of-bias NCS, negative
+sign-stable bin gap, accuracy down 1–3pp — holds on all three clauses.
+
+**Note the ordering in that table.** Over-weighting the *loss* channel does **more**
+damage (−0.0087) than the unmasked *feature* channel (−0.0073). Harm is therefore not a
+property of which pathway delivers the label:
+
+> Pseudo-label harm is a function of **exposure**: how much unreliable teacher signal the
+> student is made to absorb. A channel is safe to the extent the framework discounts a
+> teacher weaker than its student on it. GLEM is safe on the loss channel because
+> β = 0.05, and unsafe on the feature channel because nothing scales it — an asymmetry
+> that follows from its defaults rather than from any property of the two pathways.
+
+This is why §13.1 is null. The original hypothesis was not wrong about the mechanism; it
+was tested in the one place GLEM already protects. Raise the exposure and the predicted
+harm appears, concentrated out-of-bias exactly as §4 specified.
+
+**And the feature channel is worth nothing on arxiv under any treatment.** A23 arm A
+(`unimp_mask`) kept gold on a random half of train nodes and zeroed the rest, giving a
+channel that is both reliability-matched *and* still carrying real labels — the one
+configuration with a plausible route to beating `li=F`. It lands at 0.7671, **−0.06pp
+against `published`, t = −0.22, sign unstable**. Together with `teacher_consistent`'s
++0.03pp, no configuration of the channel exceeds simply switching it off. Its harm is
+removable; its benefit does not exist here.
+
+**Scope.** The exposure principle is stated on one dataset for the β axis and two for the
+feature axis, and §15 states it in the form that can be falsified elsewhere. A24 records
+that the feature-channel *repair* is conditional on the labelled fraction; nothing yet
+tests whether the β result is similarly conditional, and it may well be — wikics, at a 5%
+train split with a weaker LM teacher, is the obvious place it could behave differently
+and has not been run.
 
 ## 14. Amendment log
 
@@ -494,6 +550,69 @@ have one. Embeddings are therefore computed for every dataset the same way
 `1_Pooling/config.json`). Cross-checked against the shipped cornell tensor:
 **mean cosine 1.00000, min 1.00000**, so the two are the same model and pooling and
 the choice changes no value — it only makes provenance uniform.
+
+**A26 (2026-08-23) — A23 arms A and B report: `unimp_mask` misses its registered
+prediction and closes the feature channel; `beta_high` confirms §13.2 on every clause
+and converts it from an inference into a result.**
+
+**Arm A — `unimp_mask`. Prediction missed; verdict *Channel worthless*.**
+
+A23 predicted it would land **between `published` and +0.5pp above it (0.7677–0.7727
+GNN)**, reasoning that it was the first arm to be both reliability-matched *and* still
+carrying real label information, and that label reuse is on the ogbn-arxiv leaderboard
+because it pays. It lands at **0.7671 — −0.06pp against `published`, t = −0.22, sign
+unstable across seeds (−0.47 / −0.15 / +0.45pp)**. That is below the floor of its own
+registered interval, so the prediction is **wrong**, not merely unconfirmed.
+
+Per A23's rule this is *Channel worthless*, the outcome A23 flagged as the stronger
+negative: together with `teacher_consistent`'s +0.03pp, **no configuration of the
+label-feature channel exceeds switching it off.** Its harm is fully removable (§13.4) and
+its benefit does not exist on arxiv. Whether that is also split-conditional — wikics
+retains 59% of the harm after repair (A24), so the channel may not be worthless there —
+is untested and is recorded in §13.7.
+
+**Arm B — `beta_high`. §13.2 confirmed on all three clauses.**
+
+A23 predicted negative out-of-bias NCS, a negative sign-stable bin gap, and accuracy down
+1–3pp. Measured, 3 seeds:
+
+| | out-of-bias NCS | bin gap | GNN acc |
+|---|---|---|---|
+| `published` (β = 0.05) | +0.0035 | +0.0030 | 0.7677 |
+| `beta_high` (β = 0.8) | **−0.0087**, all 3 seeds negative | **−0.0059**, stable | **0.7539**, −1.38pp, t = −6.00 |
+
+Exact McNemar p = 1.1 × 10⁻⁴⁶; `beta_high` − `published` out-of-bias is −0.0122 with a
+stable sign. All three clauses hold.
+
+**What this changes.** §13.2 attributed the entire §13.1 null to GLEM's asymmetric α/β
+and was, until now, an inference from a correlation between two quantities nobody had
+manipulated — A23 said so explicitly when registering the arm. β has now been varied and
+the harm appears. The attribution is a result.
+
+**And it reorders the findings.** `beta_high`'s out-of-bias NCS (−0.0087) is *more*
+negative than the unmasked feature channel's (−0.0073), so harm is not a property of
+which pathway carries the label. §13.1's null and §13.3's positive are one principle,
+written up as §13.8: harm is a function of **exposure**, and GLEM is protected on one
+channel and not the other by accident of its defaults rather than by any difference
+between the pathways.
+
+**A caution against over-reading this arm.** β = 0.8 is not a configuration anyone ships;
+it is a manipulation to test a mechanism, and must be reported as a dose-response point
+rather than as a result about GLEM as used. Two points make a comparison, not a curve —
+**β = 0.3 is not registered and would make it one.** Nor has the β axis been tested on
+any second dataset; A24 showed the feature-channel *repair* is conditional on the
+labelled fraction, and there is no evidence yet that the β result is not similarly
+conditional. wikics is the obvious test and has not been run.
+
+**Running tally of registered predictions.** A16 predicted +0.8pp for the confidence
+gate and got ≈0. A18 predicted +0.3–0.5pp for the signal gate; the LM figure landed
+inside it at two seeds and collapsed to +0.32pp (t = 0.45) at three. A21 predicted
+`teacher_consistent` would recover most of the 1.21pp without exceeding `published` —
+correct. A21 also predicted `mask_pseudo` would be weakest of three — wrong, it was
+second (A22). A23 arm A predicted +0 to +0.5pp — wrong, −0.06pp. A23 arm B predicted
+negative NCS, negative gap, 1–3pp — correct on all three. **Three right, three wrong**,
+which is roughly what an honest preregistration should look like and is recorded here so
+the hit rate is visible rather than reconstructable.
 
 **A25 (2026-08-21) — the homophily gate on GNN-as-Judge's disagreement set. Run in a
 separate repository against that method's own code; registered here because the
