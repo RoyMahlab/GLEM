@@ -36,25 +36,45 @@ KNN_K = 15
 # ───────────────────────────────────────────── graph / text access
 
 
-def load_tag_graph(dataset):
-    """``(edge_index, y, raw_texts)`` for a GLEM dataset string, via TAGDataset.
+def load_tag_data(dataset):
+    """The TAGDataset ``Data`` object for a GLEM dataset string.
 
-    ``dataset`` is GLEM's name (``arxiv_TA``, ``cornell_TAG``, ...); the leading
-    token before ``_`` is the TAGDataset name.
+    ``dataset`` is GLEM's name (``arxiv_TA``, ``cornell_TAG``, ...). The leading
+    token before ``_`` is GLEM's DATA_INFO key, which is NOT always the TAGDataset
+    name: a re-split variant such as ``citeseer60`` carries ``tag_name='citeseer'``
+    plus its own ``resplit``, and asking TAGDataset for a dataset called
+    ``citeseer60`` would simply fail. The resolution mirrors
+    ``utils.data.preprocess_tag._load_tag_data`` -- including that the split seed is
+    the re-split's own and never the run seed, so the split does not move between
+    seeds while pretrain checkpoints that carry no seed are being reused.
+
+    Returns the Data object, which carries ``edge_index``, ``y``, ``raw_texts`` and
+    the ``{train,val,test}_mask`` GLEM itself splits on (``preprocess_tag`` derives
+    its ``split_idx`` from exactly these masks).
     """
     import sys
     from omegaconf import OmegaConf
-    from utils.settings import DATA_PATH, PROJ_DIR
+    from utils.settings import DATA_PATH, PROJ_DIR, get_d_info
     if PROJ_DIR not in sys.path:
         sys.path.insert(0, PROJ_DIR)
     from tag_data import TAGDataset
 
-    name = dataset.split('_')[0]
+    d_info = get_d_info(dataset)
+    name = d_info.get('tag_name', dataset.split('_')[0])
+    rs = d_info.get('resplit', None)
+    resplit_cfg = ({'enabled': False} if rs is None else
+                   {'enabled': True, 'train_ratio': float(rs['train']),
+                    'val_ratio': float(rs['val']), 'test_ratio': float(rs['test'])})
     root = f'{DATA_PATH}tag'
-    cfg = OmegaConf.create({'seed': 0,
+    cfg = OmegaConf.create({'seed': 0 if rs is None else int(rs['split_seed']),
                             'dirs': {'local_dir': root, 'cache_dir': root},
-                            'data': {'resplit': {'enabled': False}}})
-    d = TAGDataset(cfg, name=name).data
+                            'data': {'resplit': resplit_cfg}})
+    return TAGDataset(cfg, name=name).data
+
+
+def load_tag_graph(dataset):
+    """``(edge_index, y, raw_texts)`` for a GLEM dataset string, via TAGDataset."""
+    d = load_tag_data(dataset)
     return d.edge_index, d.y.view(-1).numpy(), list(d.raw_texts)
 
 
