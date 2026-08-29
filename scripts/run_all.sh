@@ -132,14 +132,19 @@ echo "  configs: ${#CONFIGS[@]}   seeds: $SEEDS   gpus: $GPU_LIST   signals: pre
 
 # ───────────────────────────────────────────── build the cell list
 
-CELL_CFG=(); CELL_ARM=(); CELL_SEED=(); CELL_COST=(); CELL_UNIT=()
-skipped=0
+# EVERY cell is listed, complete or not, and completion is recorded rather than
+# filtered out here. The shard assignment below must not depend on how much work has
+# already finished: machines start at different times, and if the packing were
+# computed over only the OUTSTANDING cells then a machine joining three hours late
+# would pack a smaller set, land on a different assignment, and the shards would stop
+# lining up -- some cells claimed twice, others by nobody. Sharding over the whole
+# matrix makes the assignment a pure function of matrix.sh, so every machine agrees
+# no matter when it starts or what it has already done. SKIP_DONE is applied after
+# the split, per machine.
+CELL_CFG=(); CELL_ARM=(); CELL_SEED=(); CELL_COST=(); CELL_UNIT=(); CELL_DONE=()
 for cfg in "${CONFIGS[@]}"; do
   for arm in $(arms_for "$cfg"); do
     for seed in "${SEED_ARR[@]}"; do
-      if [ "$SKIP_DONE" = 1 ] && cell_done "$cfg" "$arm" "$seed"; then
-        skipped=$((skipped + 1)); continue
-      fi
       CELL_CFG+=("$cfg"); CELL_ARM+=("$arm"); CELL_SEED+=("$seed")
       CELL_COST+=("${COST[$cfg]:-600}")
       if [ "$SHARD_UNIT" = seed ]; then
@@ -147,18 +152,23 @@ for cfg in "${CONFIGS[@]}"; do
       else
         CELL_UNIT+=("$cfg:$arm:$seed")
       fi
+      if [ "$SKIP_DONE" = 1 ] && cell_done "$cfg" "$arm" "$seed"; then
+        CELL_DONE+=(1)
+      else
+        CELL_DONE+=(0)
+      fi
     done
   done
 done
 n_cells=${#CELL_CFG[@]}
 if [ "$n_cells" = 0 ]; then
-  if [ "$skipped" = 0 ] && [ -n "$ONLY_ARMS" ]; then
-    # Distinguishes "the work is finished" from "the filter matched nothing", which
-    # look identical from the outside and mean opposite things.
+  # Distinguishes "the filter matched nothing" from "the work is finished", which
+  # look identical from the outside and mean opposite things.
+  if [ -n "$ONLY_ARMS" ]; then
     echo "=== nothing to run: no arm in ONLY_ARMS='$ONLY_ARMS' is registered on" \
          "${CONFIGS[*]} (see scripts/matrix.sh)"
   else
-    echo "=== nothing to run: $skipped cell(s) already complete"
+    echo "=== nothing to run: ${CONFIGS[*]} contribute no cells to the matrix"
   fi
   exit 0
 fi
@@ -200,26 +210,43 @@ if [ -n "$SHARD" ]; then
     [ "${UNIT_BIN[${CELL_UNIT[$i]}]}" = "$((SHARD_K - 1))" ] && MINE[$i]=1
   done
 
+  # Assigned load is over the whole matrix, so it is the same on every machine and at
+  # any time. Remaining load is what that machine still has to do, which is what the
+  # operator actually wants to read, so both are shown.
+  declare -a BIN_LEFT
+  for b in $(seq 0 $((SHARD_N - 1))); do BIN_LEFT[$b]=0; done
+  for i in $(seq 0 $((n_cells - 1))); do
+    [ "${CELL_DONE[$i]}" = 1 ] && continue
+    b=${UNIT_BIN[${CELL_UNIT[$i]}]}
+    BIN_LEFT[$b]=$(( BIN_LEFT[$b] + CELL_COST[i] ))
+  done
+
   echo "=== shard $SHARD_K/$SHARD_N (unit=$SHARD_UNIT), balance across machines:"
   for b in $(seq 0 $((SHARD_N - 1))); do
     mark=" "; [ "$b" = "$((SHARD_K - 1))" ] && mark="*"
-    echo "   $mark machine $((b + 1)): $(hms "${BIN_LOAD[$b]}") of GPU time"
+    echo "   $mark machine $((b + 1)): $(hms "${BIN_LOAD[$b]}") assigned," \
+         "$(hms "${BIN_LEFT[$b]}") still to run"
   done
 else
   for i in $(seq 0 $((n_cells - 1))); do MINE[$i]=1; done
 fi
 
-mine_n=0; mine_cost=0
+mine_n=0; mine_cost=0; mine_done=0
 : > "$PLAN"
 for i in $(seq 0 $((n_cells - 1))); do
   [ -n "${MINE[$i]:-}" ] || continue
+  if [ "${CELL_DONE[$i]}" = 1 ]; then mine_done=$((mine_done + 1)); continue; fi
   mine_n=$((mine_n + 1)); mine_cost=$((mine_cost + CELL_COST[i]))
   printf '%s\t%s\t%s\t%s\n' \
     "${CELL_CFG[$i]}" "${CELL_ARM[$i]}" "${CELL_SEED[$i]}" "${CELL_COST[$i]}" >> "$PLAN"
 done
 
-echo "=== this machine: $mine_n cell(s), ~$(hms "$mine_cost") of GPU time" \
-     "($skipped already complete, $n_cells outstanding in total)"
+if [ "$mine_n" = 0 ]; then
+  echo "=== nothing to run: all $mine_done cell(s) assigned to this machine are complete"
+  exit 0
+fi
+echo "=== this machine: $mine_n cell(s) to run, ~$(hms "$mine_cost") of GPU time" \
+     "($mine_done of its $((mine_n + mine_done)) assigned cells already complete)"
 echo "    plan written to $PLAN"
 
 if [ "$DRY_RUN" = 1 ]; then
@@ -269,6 +296,7 @@ for cfg in "${ALL_CONFIGS[@]}"; do
   any=0
   for i in $(seq 0 $((n_cells - 1))); do
     [ -n "${MINE[$i]:-}" ] || continue
+    [ "${CELL_DONE[$i]}" = 1 ] && continue
     [ "${CELL_CFG[$i]}" = "$cfg" ] || continue
     LANE[${CELL_SEED[$i]}]="${LANE[${CELL_SEED[$i]}]:-} ${CELL_ARM[$i]}"
     any=1

@@ -42,6 +42,15 @@ longest-processing-time packing computed from the matrix, so it is deterministic
 every machine derives the identical split and simply keeps its own share. No
 coordination, no central queue.
 
+**Machines may start at different times.** The packing runs over the *whole* matrix,
+not over what is still outstanding, so the assignment is a pure function of
+`matrix.sh`. A machine joining a day late computes the same split as one that started
+first, then skips whatever is already complete. Were the packing computed over only
+the outstanding cells, a late joiner would pack a smaller set, land on a different
+assignment, and the shards would stop lining up — some cells claimed twice, others by
+nobody. Verified at N=4: the four shards cover all 474 cells with no overlap, and each
+machine's remaining work is always a strict subset of what it owns.
+
 ```bash
 # machine 1                # machine 2                # machine 3
 SHARD=1/3 scripts/run_all.sh   SHARD=2/3 scripts/run_all.sh   SHARD=3/3 scripts/run_all.sh
