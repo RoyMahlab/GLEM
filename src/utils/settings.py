@@ -136,6 +136,26 @@ for _tag_name, (_tag_n_nodes, _tag_n_labels, _tag_tr) in _TAG_META.items():
         'data_root': f'{DATA_PATH}tag/{_tag_name}/',
     }
 
+# ! Re-split variants. A TAG dataset whose shipped split makes one participant
+# unusable can be re-registered under a new GLEM name with a deterministic split,
+# leaving the original entry -- and every artefact keyed by it -- untouched.
+#
+# citeseer ships 120 train labels = 20 per class, at which DeBERTa reaches 0.208
+# against a 0.167 chance baseline: it is not a teacher, and the co-training loop
+# degenerates. At 60% it has 319 labels per class, comfortably above the viability
+# floor observed on wikics (58 per class -> 0.608 against 0.100 chance).
+#
+# ``split_seed`` is fixed and deliberately NOT tied to the run seed: pretrain paths
+# carry no seed under the standard regime (``probe.context.path_suffix``), so a
+# seed-dependent split would let seed 1 reuse a checkpoint trained on seed 0's
+# labels. Only the model seed varies, as for every shipped split.
+DATA_INFO['citeseer60'] = {
+    **DATA_INFO['citeseer'],
+    'tag_name': 'citeseer',          # same underlying graph and text
+    'train_ratio': 0.60,
+    'resplit': {'train': 0.60, 'val': 0.20, 'test': 0.20, 'split_seed': 0},
+}
+
 get_d_info = lambda x: DATA_INFO[x.split('_')[0]]
 
 TR_RATIO_DICT = {_d: _['train_ratio'] for _d, _ in DATA_INFO.items()}

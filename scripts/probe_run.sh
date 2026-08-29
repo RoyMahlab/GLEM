@@ -92,6 +92,29 @@ case "$ARM" in
     # A27 control: beta=0.8 with the SAME 80% keep-rate, chosen at random. Without it,
     # beta_high_sig80 confounds which nodes were kept with how many.
     ARM_ARGS="--gnn_pl_weight=0.8"; export GLEM_PROBE_GATE="random80:lm" ;;
+  b05_rand80)
+    # A28 grid (beta=0.05, random). beta stays at the published 0.05; the M-step
+    # pseudo-label set is cut to a random 80%. Rate-matched control for b05 gates.
+    ARM_ARGS=""; export GLEM_PROBE_GATE="random80:lm" ;;
+  b30)
+    # A28 grid (beta=0.3, ungated). The middle exposure point; without it the beta
+    # axis is a two-point comparison rather than a dose-response.
+    ARM_ARGS="--gnn_pl_weight=0.3" ;;
+  b30_conf80)
+    ARM_ARGS="--gnn_pl_weight=0.3 --pl_filter=0.8" ;;
+  b30_sig80gnn)
+    ARM_ARGS="--gnn_pl_weight=0.3"; export GLEM_PROBE_GATE="signal80:gnn" ;;
+  b30_sig80lm)
+    ARM_ARGS="--gnn_pl_weight=0.3"; export GLEM_PROBE_GATE="signal80:lm" ;;
+  b30_rand80)
+    ARM_ARGS="--gnn_pl_weight=0.3"; export GLEM_PROBE_GATE="random80:lm" ;;
+  b80_conf80)
+    ARM_ARGS="--gnn_pl_weight=0.8 --pl_filter=0.8" ;;
+  b80_sig80gnn)
+    # beta=0.8 with the E-step homophily gate. Note beta weights the M-step, so this
+    # cell tests whether cleaning the GNN teacher matters at high M-step exposure --
+    # an indirect interaction through the EM loop, not a direct crossing.
+    ARM_ARGS="--gnn_pl_weight=0.8"; export GLEM_PROBE_GATE="signal80:gnn" ;;
   oracle)
     # Published hyperparameters, but the pseudo-label set is restricted to nodes
     # the teacher gets RIGHT. Uses ground truth, so it is an upper bound on any

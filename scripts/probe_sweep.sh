@@ -44,18 +44,22 @@ declare -A ARMS=(
   [texas_gcn]="published alpha0_li_T alpha0_li_F published_li_F oracle oracle_random"
   [washington_gcn]="published alpha0_li_T alpha0_li_F published_li_F oracle oracle_random"
   [wisconsin_gcn]="published alpha0_li_T alpha0_li_F published_li_F oracle oracle_random"
-  [cora]="published alpha0_li_T oracle oracle_random conf_gate60 conf_gate80 conf_gate90"
-  [citeseer]="published alpha0_li_T oracle oracle_random conf_gate60 conf_gate80 conf_gate90"
-  [pubmed]="published alpha0_li_T oracle oracle_random conf_gate60 conf_gate80 conf_gate90"
+  [cora]="published conf_gate80 sig_gate80_gnn sig_gate80_lm b05_rand80 b30 b30_conf80 b30_sig80gnn b30_sig80lm b30_rand80 beta_high b80_conf80 b80_sig80gnn beta_high_sig80 beta_high_rand80 alpha0_li_T oracle oracle_random"
+  # citeseer at its shipped 20-labels-per-class split leaves DeBERTa at 0.208
+  # against a 0.167 chance baseline -- not a teacher. citeseer60 is the same
+  # graph re-split to 60% train (318/class); see settings.py.
+  [citeseer60]="published conf_gate80 sig_gate80_gnn sig_gate80_lm b05_rand80 b30 b30_conf80 b30_sig80gnn b30_sig80lm b30_rand80 beta_high b80_conf80 b80_sig80gnn beta_high_sig80 beta_high_rand80 alpha0_li_T oracle oracle_random"
+  [citeseer]="published conf_gate80 sig_gate80_gnn sig_gate80_lm b05_rand80 b30 b30_conf80 b30_sig80gnn b30_sig80lm b30_rand80 beta_high b80_conf80 b80_sig80gnn beta_high_sig80 beta_high_rand80 alpha0_li_T oracle oracle_random"
+  [pubmed]="published conf_gate80 sig_gate80_gnn sig_gate80_lm b05_rand80 b30 b30_conf80 b30_sig80gnn b30_sig80lm b30_rand80 beta_high b80_conf80 b80_sig80gnn beta_high_sig80 beta_high_rand80 alpha0_li_T oracle oracle_random"
   # published_li_T / alpha0_li_T_only are A19 and are registered for arxiv ONLY.
-  [arxiv]="published alpha0_li_T oracle oracle_random conf_gate60 conf_gate80 conf_gate90 sig_gate80 sig_gate80_gnn sig_gate80_lm sig_gate90 published_li_T alpha0_li_T_only teacher_consistent mask_pseudo mask_train unimp_mask beta_high beta_high_sig80 beta_high_rand80"
+  [arxiv]="published alpha0_li_T oracle oracle_random conf_gate60 conf_gate80 conf_gate90 sig_gate80 sig_gate80_gnn sig_gate80_lm sig_gate90 published_li_T alpha0_li_T_only teacher_consistent mask_pseudo mask_train unimp_mask beta_high beta_high_sig80 beta_high_rand80 b05_rand80 b30 b30_conf80 b30_sig80gnn b30_sig80lm b30_rand80 b80_conf80 b80_sig80gnn"
   # RevGAT on the WebKB sets. These configs set gnn_label_input=F, so 2a/2b
   # coincide and published_li_F would equal published -- two arms only, as for
   # the other RevGAT datasets.
   # A23 arm C: the feature-channel result replicated on a second dataset. wikics is
   # the only unused TAG set with a non-degenerate homophily axis (median 0.746) and
   # both pretrains already on disk; RevGAT, li=F, ~1h/run.
-  [wikics]="published published_li_T teacher_consistent alpha0_li_T"
+  [wikics]="published conf_gate80 sig_gate80_gnn sig_gate80_lm b05_rand80 b30 b30_conf80 b30_sig80gnn b30_sig80lm b30_rand80 beta_high b80_conf80 b80_sig80gnn beta_high_sig80 beta_high_rand80 published_li_T teacher_consistent alpha0_li_T"
   [cornell]="published alpha0_li_T oracle oracle_random"
   [texas]="published alpha0_li_T oracle oracle_random"
   [washington]="published alpha0_li_T oracle oracle_random"

@@ -32,22 +32,32 @@ def _load_tag_data(cf):
     """Return the ``TAGDataset`` PyG ``Data`` object for ``cf``'s dataset."""
     d = cf.data
     name = d.tag_name
-    if name not in _TAG_CACHE:
+    # A re-split variant shares `tag_name` with its parent but must not share the
+    # cache entry, or whichever loaded first would silently supply its split to the
+    # other within one process.
+    rs = getattr(d, 'resplit', None)
+    key = (name, None if rs is None else tuple(sorted(dict(rs).items())))
+    if key not in _TAG_CACHE:
         if PROJ_DIR not in sys.path:
             sys.path.insert(0, PROJ_DIR)
         from omegaconf import OmegaConf
         from tag_data import TAGDataset
 
         tag_root = f"{DATA_PATH}tag"
+        # The split seed is the RESPLIT's own, not the run seed -- see the
+        # citeseer60 comment in settings.py for why it must not vary by seed.
+        resplit_cfg = ({"enabled": False} if rs is None else
+                       {"enabled": True, "train_ratio": float(rs["train"]),
+                        "val_ratio": float(rs["val"]), "test_ratio": float(rs["test"])})
         tag_cfg = OmegaConf.create(
             {
-                "seed": int(cf.seed),
+                "seed": int(cf.seed) if rs is None else int(rs["split_seed"]),
                 "dirs": {"local_dir": tag_root, "cache_dir": tag_root},
-                "data": {"resplit": {"enabled": False}},
+                "data": {"resplit": resplit_cfg},
             }
         )
-        _TAG_CACHE[name] = TAGDataset(tag_cfg, name=name).data
-    return _TAG_CACHE[name]
+        _TAG_CACHE[key] = TAGDataset(tag_cfg, name=name).data
+    return _TAG_CACHE[key]
 
 
 def load_tag_graph_structure(cf):

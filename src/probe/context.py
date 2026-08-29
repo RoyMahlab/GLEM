@@ -28,6 +28,14 @@ ARMS = ('published', 'alpha0_li_T', 'alpha0_li_F', 'published_li_F',
         'teacher_consistent', 'mask_pseudo', 'mask_train',
         'unimp_mask', 'beta_high',
         'beta_high_sig80', 'beta_high_rand80',
+        # A28 beta x selection grid. beta=0.05 is the published value on every
+        # dataset, so that row's 'none' cell IS `published`; only the cells below
+        # are new. Selection acts on the step its axis belongs to: confidence and
+        # random on both, homophily on the E-step (GNN teacher), ambiguity on the
+        # M-step (LM teacher).
+        'b05_rand80',
+        'b30', 'b30_conf80', 'b30_sig80gnn', 'b30_sig80lm', 'b30_rand80',
+        'b80_conf80', 'b80_sig80gnn',
         'oracle', 'oracle_random',
         'conf_gate60', 'conf_gate80', 'conf_gate90',
         'sig_gate80', 'sig_gate90',
