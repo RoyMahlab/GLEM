@@ -292,6 +292,10 @@ for cfg in "${ALL_CONFIGS[@]}"; do
     LANE[$first_seed]=$(echo "${LANE[$first_seed]}" | cut -d' ' -f2-)
   fi
 
+  # At most one lane per GPU at a time. With more seeds than GPUs the lanes run in
+  # batches rather than doubling up: two GLEM runs on one 24GB card is how you get an
+  # OOM eight hours into an arxiv cell. parallel_seed_sweep.sh refuses this case
+  # outright; batching keeps every seed running without that restriction.
   pids=(); li=0
   for seed in $(for s in "${!LANE[@]}"; do echo "$s"; done | sort -n); do
     arms_here=$(echo "${LANE[$seed]}" | xargs)
@@ -302,6 +306,10 @@ for cfg in "${ALL_CONFIGS[@]}"; do
       for arm in $arms_here; do run_cell "$cfg" "$arm" "$seed" "$gpu"; done
     ) &
     pids+=($!)
+    if [ "${#pids[@]}" -ge "${#GPU_ARR[@]}" ]; then
+      for p in "${pids[@]}"; do wait "$p"; done
+      pids=()
+    fi
   done
   for p in "${pids[@]}"; do wait "$p"; done
   echo "--- $cfg done"
