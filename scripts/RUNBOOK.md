@@ -97,21 +97,40 @@ fan out normally.
 ### Collecting the results
 
 Each machine writes its own `temp/probe_output/<dataset>/standard/<arm>/seed<n>/`.
-Cells are disjoint by construction, so merging is a union — no conflicts:
+Cells are disjoint by construction, so merging is a union. Pull from the machine that
+holds the analysis, at any time — you do not have to wait for the workers to finish:
 
 ```bash
-# on each worker, back to the machine holding the analysis
-rsync -av temp/probe_output/ <analysis-host>:<repo>/temp/probe_output/
+DRY_RUN=1 scripts/pull_results.sh user@host2 user@host3 user@host4   # report only
+scripts/pull_results.sh user@host2 user@host3 user@host4
 ```
 
-Then rebuild the tables:
+Do **not** plain-`rsync` the archive. Two things it would get wrong, both silently:
+
+- **A worker mid-run** has a partially written `steps.jsonl` and a `logits/` directory
+  missing its last iteration. Copied in, that cell looks like any other to
+  `analyze.py`, which globs `steps.jsonl` and reads whatever logits are present.
+  `pull_results.sh` transfers only cells whose `steps.jsonl` holds all four
+  distillation events.
+- **A cell complete on both machines** means the shards were not disjoint — mismatched
+  `SEEDS`, or a machine run unsharded. That is a launch bug worth seeing. Collisions
+  are reported and the local copy kept, unless you pass `OVERWRITE=1`.
+
+The transfer is per-cell and resumable; interrupt it and run it again. It also merges
+and deduplicates each worker's `logs/probe/manifest.tsv`, which is where the per-run
+timings behind `matrix.sh`'s cost model come from.
+
+If the workers keep the repo at a different path, set `REMOTE_ROOT=/path/to/GLEM`.
+
+Then re-plan (the pulled cells now count as complete) and rebuild the tables:
 
 ```bash
+scripts/run_all.sh                     # or DRY_RUN=1 to just see what is left
 python src/probe/analyze.py --probe-dir temp/probe_output --out temp/probe_analysis
 ```
 
 `_signals/` is a derived cache and is identical everywhere it is built from the same
-dataset, so it does not matter which copy wins.
+dataset, so it does not matter which copy wins — the pull does not touch it.
 
 ## Cached signals
 
