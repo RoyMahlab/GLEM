@@ -45,7 +45,7 @@ md(r"""
 | phase | question | answer |
 |---|---|---|
 | **1. Instrument** | can before/after/teacher be recovered per step? | yes — but GLEM overwrites its own logits, so an archive had to be built first |
-| **2. Harm measurement** | is NCS negative where the teacher is out of bias? | **no**, on 13 of 14 scorable cells |
+| **2. Harm measurement** | is NCS negative where the teacher is out of bias? | **no** — 14 not supported, 2 weakly supported, 10 no test |
 | **3. Why not?** | what breaks the prediction? | GLEM's **asymmetric α/β** already down-weights the direction where the teacher is weak |
 | **4. Mechanism** | does the student adopt the teacher's wrong labels? | **yes, 1.7–5.8×** — the mechanism is real, it just does not net out |
 | **5. Ceiling** | would perfect gating pay? | **yes, +3.4 / +4.4pp** on arxiv; positive on 17 of 18 cells |
@@ -53,6 +53,9 @@ md(r"""
 | **7. Signal gate** | do exogenous signals reach what confidence cannot? | they reach the population but **do not beat confidence** |
 | **8. Feature channel** | is the harm in *how* the label is delivered? | **yes — Supported.** −1.21pp accuracy, concentrated out-of-bias |
 | **9. Why** | is it the label, or the *unmasked* channel? | **the channel.** Matching train/inference reliability recovers 102% |
+| **10. Unification** | is harm a property of the *pathway*? | **no — of exposure.** β=0.8 on the loss channel does *more* damage than the unscaled feature channel |
+| **11. Second framework** | does it hold outside GLEM? | **directionally yes** — in GNN-as-Judge the optimum is *zero* transferred pairs (13pp range) |
+| **12. Floor** | when does any of this apply? | at 20 labels/class the LM is 4pp above chance — the loop degenerates |
 
 The pivot at phase 3 is the substance of the project: the original prediction was
 wrong, and being wrong turned out to be more informative than being right, because the
@@ -127,7 +130,9 @@ md(r"""
 
 `EXPERIMENT.md` fixed every bin, threshold, axis and decision rule **before any
 measurement existed** (commit `33a3601`). Eighteen amendments record every deviation
-since, with dates and reasons, including the ones that hurt.
+since, with dates and reasons, including the ones that hurt. Twenty-eight amendments
+now, and A26 keeps the running tally of registered predictions: **three right, four
+wrong**.
 
 The rule (§11), per (dataset, direction):
 
@@ -748,6 +753,189 @@ wrong (A22).
 """)
 
 md(r"""
+## Phase 10 — the unification: exposure, not pathway (A23/A26/A27)
+
+Phases 1--7 are about the **loss** pathway, Phases 8--9 about the **feature**
+pathway, and they read as two findings. A23 arm B collapses them into one.
+
+`beta_high` raises $\beta$ from GLEM's shipped 0.05 to 0.8 and changes nothing
+else, so it is the loss pathway alone at feature-pathway-like exposure. §13.2 had
+attributed the entire §13.1 null to GLEM's asymmetric α/β, and until this arm ran
+that was an inference from a correlation between two quantities nobody had
+manipulated. A23 registered the prediction — negative out-of-bias NCS, negative
+sign-stable bin gap, accuracy down 1–3pp — and it holds on all three clauses.
+""")
+
+co(r"""
+A28 = ['published', 'beta_high', 'published_li_T', 'teacher_consistent',
+       'beta_high_rand80', 'beta_high_sig80']
+q = ncs[(ncs.dataset == 'arxiv_TA') & (ncs.bin_scheme == 'median')
+        & (ncs.direction == 'lm->gnn') & (ncs.signal == 'knn_ambiguity')
+        & (ncs.teacher_out_of_bias_bin)]
+a = acc[(acc.dataset == 'arxiv_TA') & (acc.model == 'gnn')].pivot_table(
+    index='seed', columns='arm', values='test_acc')
+
+print('EXPOSURE, NOT PATHWAY  --  arxiv, GNN student, 3 seeds')
+print('%-22s %11s %11s' % ('configuration', 'NCS out', 'GNN acc'))
+label = {'published': 'loss, beta=0.05 (shipped)', 'beta_high': 'loss, beta=0.8',
+         'published_li_T': 'features, unmasked', 'teacher_consistent': 'features, matched'}
+for arm in ['published', 'beta_high', 'published_li_T', 'teacher_consistent']:
+    n = q[q.arm == arm].groupby('seed').ncs.mean()
+    print('%-22s %+11.4f %11.4f' % (label[arm], n.mean(), a[arm].mean()))
+
+print()
+print('SELECTION AT HIGH EXPOSURE (A27) -- does a gate help where harm is large?')
+for arm in ['beta_high', 'beta_high_rand80', 'beta_high_sig80']:
+    n = q[q.arm == arm].groupby('seed').ncs.mean()
+    print('   %-18s NCS %+.4f   acc %.4f' % (arm, n.mean(), a[arm].mean()))
+d_ = (a['beta_high_sig80'] - a['beta_high_rand80']).dropna()
+sd = d_.std(ddof=1)
+print('   sig80 - rand80 (rate-matched): %+.2fpp  t=%.2f  sign %s'
+      % (100 * d_.mean(), d_.mean() / (sd / np.sqrt(len(d_))),
+         'stable' if (np.sign(d_) == np.sign(d_.mean())).all() else 'UNSTABLE'))
+d2 = (a['beta_high_sig80'] - a['published']).dropna()
+print('   sig80 - published (A27 comparator): %+.2fpp  t=%.2f'
+      % (100 * d2.mean(), d2.mean() / (d2.std(ddof=1) / np.sqrt(len(d2)))))
+""")
+
+md(r"""
+Two things fall out.
+
+**Harm is not a property of the pathway.** Over-weighting the *loss* channel does
+**more** NCS damage (−0.0087) than the unmasked *feature* channel (−0.0073). What
+the four rows share is how much unreliable teacher signal the student absorbs:
+
+> A channel is safe to the extent the framework discounts a teacher weaker than its
+> student on it. GLEM is safe on the loss pathway because β = 0.05, and unsafe on
+> the feature pathway because nothing scales it — an asymmetry that follows from its
+> defaults, not from any difference between the pathways.
+
+The teacher in row 2 is **less accurate than the student it instructs** (0.629
+against 0.648 out-of-bias) and is net-beneficial at the shipped weight regardless.
+That is what makes this a finding rather than "weighting a bad teacher more hurts."
+
+**And selection still does not work where harm is large.** A27 tested the gate at
+β = 0.8, the one setting where the loss channel demonstrably harms. It raises
+kept-set teacher precision by 5.1pp (0.750 → 0.802), improves NCS from −0.0087 to
+−0.0056, and lands **0.06pp below a rate-matched random drop** — recovering 7% of
+the 1.38pp deficit while sitting 1.28pp under the shipped configuration. That
+closes the standing objection to Phase 6: gating had only been tested where the
+channel was already discounted. Tested where it is not, it still fails.
+
+**Registered-prediction tally so far (A26):** A21's `teacher_consistent` call and
+A23 arm B's three clauses were correct; A16's +0.8pp, A21's `mask_pseudo` ordering,
+A23 arm A's interval and A27's three clauses were wrong. **Three right, four
+wrong** — recorded so the hit rate is visible rather than reconstructable.
+""")
+
+md(r"""
+## Phase 11 — a second framework, and the split-conditionality of the repair
+
+**wikics (A23 arm C / A24).** The feature-pathway harm replicates and grows —
+**−4.59pp** against arxiv's −1.21pp, every one of six seed-differences negative.
+But `teacher_consistent` recovers only **41%** there against **102%** on arxiv,
+because wikics has a 5% train split: there is almost no gold in the channel to
+overwrite. So the *harm* is general and the *repair* is conditional on the labelled
+fraction. §13.4's account is corrected from "arxiv-specific" to
+"split-conditional" — a scope condition rather than a limitation, and the user's
+correction rather than the analysis's.
+
+wikics also **replicates the study's one weakly-supported §11 cell**: `gnn→lm`,
+same direction, same axis, teacher accuracy degrading 0.966 → 0.685, sign-stable
+gap −0.0090, p < 1e−5. The verdict table moves to **14 not supported / 10 no test /
+2 weakly supported**.
+
+**GNN-as-Judge.** A framework that transmits the teacher by ORPO preference tuning
+on the LLM/GNN *disagreement* set rather than by a weighted loss. Its exposure knobs
+are the number of transferred pairs $K$ and the per-pair weight `pref_beta`.
+arxiv, 3-shot, agreement set held constant at 674 examples:
+
+| $K$ | total pairs | LLM test acc. |
+|---|---|---|
+| **0** | 674 | **0.6137** |
+| 103 | 777 | 0.5763 |
+| 206 | 880 | 0.5500 |
+| 412 | 1086 | 0.4830 |
+
+Monotone: −25.8pp per unit keep fraction, a **13.07pp** range against a 2.6pp
+paired-difference noise floor. **The optimum is zero** — preferring the GNN on
+contested nodes is net-harmful at every level tested, and the harm is confined to
+the disagreement branch (the 674-example agreement set is in every row, including
+the best).
+
+Sweeping `pref_beta` over 20× at fixed $K$ moves accuracy **1.00pp**, below the
+floor. So in this framework the operative quantity is how many pairs enter the
+objective, not how hard each one pushes — a refinement of the account, not a
+contradiction of it.
+
+**Two caveats stated rather than buried.** The $K$ sweep is **confounded**: raising
+$K$ adds pairs *and* admits nodes with lower preference scores. The fixed-$K$
+selection comparison that separates volume from node quality is registered (A25)
+and outstanding, so *"not which nodes"* currently rests on GLEM alone. And these
+numbers come from an aggregate that reported n=1; they are single-seed until
+re-aggregated.
+
+**Why the harm is so large there.** At $K = 206$ the best selector reaches only
+0.529 kept-set precision against a random baseline of 0.301 — every transferred
+pair is close to a coin flip. That is the mechanism behind the 13pp, and it also
+limits what a null in the selection columns could show: it cannot distinguish
+"selection does not help" from "there was nothing good to select." In GLEM the
+selectors reached 0.83 precision and still converted almost nothing, which is the
+stronger version of the claim.
+""")
+
+md(r"""
+## Phase 12 — a floor on the whole method family
+
+A practical constraint found while choosing splits, and it bounds where any of this
+applies: **cross-modal co-training needs enough labels for the LM to be a viable
+teacher.**
+""")
+
+co(r"""
+print('Does the LM survive the label budget?  (published arm, GLEM)')
+print('%-10s %8s %11s %8s %9s %9s %12s'
+      % ('dataset', 'classes', 'labels/cls', 'chance', 'LM acc', 'GNN acc', 'LM - chance'))
+rows = []
+for ds in ['citeseer_TAG', 'wikics_TAG', 'cora_TAG', 'arxiv_TA', 'pubmed_TAG']:
+    runs = sorted((PROBE / ds / 'standard' / 'published').glob('seed*'))
+    if not runs:
+        continue
+    z = np.load(runs[0] / 'splits.npz')
+    y = z['labels']
+    c = int(y.max()) + 1
+    per = len(z['train_x']) / c
+    sub = acc[(acc.dataset == ds) & (acc.arm == 'published')]
+    lm = sub[sub.model == 'lm'].test_acc.mean()
+    gn = sub[sub.model == 'gnn'].test_acc.mean()
+    rows.append((ds.split('_')[0], c, per, 1.0 / c, lm, gn))
+for name, c, per, ch, lm, gn in sorted(rows, key=lambda r: r[2]):
+    print('%-10s %8d %11.0f %8.3f %9.4f %9.4f %+12.4f'
+          % (name, c, per, ch, lm, gn, lm - ch))
+""")
+
+md(r"""
+At **20 labels per class** the LM sits **4 points above chance** — it is not a
+teacher, and the co-training loop degenerates. That retrospectively explains why
+citeseer contributed so little: its LM was never worth studying as a teacher. The
+viability floor is somewhere between 20 and 58 labels per class; we have no points
+in between.
+
+Two consequences. It rules out re-splitting cora and pubmed to the Planetoid
+convention of 20/class, which would have made them literature-comparable — it
+would instead have produced three degenerate datasets. And it explains the division
+of labour between the two frameworks: a fine-tuned **encoder** needs hundreds of
+labels per class, while an instruction-tuned **decoder** classifies at 3 shots, so
+each framework is studied in the regime its language model can operate in. That
+also means framework and label regime are confounded across the two, which belongs
+in the limitations.
+
+Note also that the datasets here do **not** use the Planetoid splits: the TAG
+re-releases of cora and pubmed ship 60% train, so their absolute numbers (cora
+0.8764, pubmed 0.9513) are not comparable to published figures for those datasets.
+""")
+
+md(r"""
 ## What is established, and what is not
 
 **Established:**
@@ -784,14 +972,35 @@ md(r"""
    is 75.5% reliable. Equalising the two recovers **102%** of the cost; masking either
    half alone recovers only 38–65%. That is a condition under which label reuse is
    safe, which is why UniMP and "Bag of Tricks" do not pay this price.
+11. **Harm is a function of exposure, not of pathway** (A23/A26) — raising β from 0.05
+   to 0.8 costs 1.38pp (t = −6.00) and does **more** NCS damage (−0.0087) than the
+   unscaled feature channel (−0.0073). §13.2's account of the primary null is now a
+   result rather than an inference: β has been varied and the harm appears.
+12. **Selection fails even where harm is large** (A27) — at β = 0.8 a gate that lifts
+   kept-set precision 5.1pp lands 0.06pp *below* a rate-matched random drop. This closes
+   the standing objection that gating was only tested in a discounted channel.
+13. **The harm generalises; the repair is split-conditional** (A24) — wikics shows
+   −4.59pp, four times arxiv's, but `teacher_consistent` recovers 41% there against
+   102%, because only 5% of its label channel is gold. wikics also replicates the one
+   weakly-supported §11 cell.
+14. **A second framework shows the same direction** — in GNN-as-Judge the optimum is
+   **zero** transferred preference pairs (13.07pp range, 2.6pp floor), while sweeping
+   the per-pair weight 20× moves 1.00pp. Volume governs, per-pair strength does not.
+15. **There is a floor on the method family** — at 20 labels per class the LM is 4pp
+   above chance and co-training degenerates.
 
 **Not established:**
 
 - **Whether the label-feature channel can ever *help*.** Phase 9 removes its harm
-  entirely but recovers nothing above `li=F`, so the contingent per-node feature gate
-  from A19 is **withdrawn as unmotivated (A22)** — there is no residual harm to target.
-  Whether a *masked* channel beats `li=F` on a dataset where label reuse is known to pay
-  is untested; arxiv is not that dataset.
+  entirely but recovers nothing above `li=F`; A23 arm A then confirmed it, reaching
+  −0.06pp with an unstable sign. **No configuration of the channel exceeds switching it
+  off on arxiv.** A24 narrows that to high-labelled-fraction settings — 59% of the harm
+  survives the repair on wikics.
+- **"Not which nodes" outside GLEM.** The fixed-K selection comparison in GNN-as-Judge
+  is registered (A25) and outstanding; its K sweep confounds volume with node quality,
+  so that half of the claim currently rests on GLEM's three criteria across eight arms.
+- **A dose-response in β.** Two points on one dataset. β = 0.3 and a second dataset
+  are wired (A28) and not yet run, so the honest verb is "affects", not "sets".
 - **Whether any loss-channel gate beats GLEM as shipped.** It will not become
   resolvable: `published` LM varies 1.8pp across seeds, and powering that comparison to
   t = 2 needs ~24 seeds on the GNN and several hundred on the LM.

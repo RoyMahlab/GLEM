@@ -8,11 +8,18 @@
 #         bash run_all_glem.sh cora pubmed  # only the named ones
 set -u
 
-PY=/home/roymahlab/miniconda3/envs/ct/bin/python
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CFG_DIR="$ROOT/configs/glem"
 cd "$ROOT"
 mkdir -p logs
+
+# The uv-managed environment (pyproject.toml + uv.lock). Override with e.g.
+#   PY=/path/to/other/python bash run_all_glem.sh
+PY="${PY:-$ROOT/.venv/bin/python}"
+if [ ! -x "$PY" ]; then
+  echo "!! no interpreter at '$PY' — run 'uv sync' first (or set PY=...)" >&2
+  exit 1
+fi
 
 # Feasible on 2x24GB GPUs (products is intentionally excluded — see bottom).
 DEFAULT_DATASETS=(cornell texas washington wisconsin \

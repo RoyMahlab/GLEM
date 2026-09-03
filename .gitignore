@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# uv / virtualenv (pyproject.toml and uv.lock are tracked)
+.venv/
+*.egg-info/
+
 data/
 temp/
 temp_results/

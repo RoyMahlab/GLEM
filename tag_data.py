@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from torch_geometric.data import Dataset, Data
 from torch_geometric.utils import to_undirected
+
+from src.utils.settings import DATA_PATH
 try:
     from huggingface_hub.errors import RemoteEntryNotFoundError
 except ImportError:  # older huggingface_hub (e.g. the pinned GLEM `ct` env)
@@ -539,7 +541,10 @@ if __name__ == "__main__":
     from hydra import main
     from loguru import logger
 
-    @main(version_base=None, config_path="../configs", config_name="main")
+    root = f'{DATA_PATH}tag'
+    cfg = OmegaConf.create({'seed': 0,
+                            'dirs': {'local_dir': root, 'cache_dir': root},
+                            'data': {'resplit': {'enabled': False}}})
     def test_load_dataset(cfg: OmegaConf):
         loadable = (
             TAGDataset.AVAILABLE_DATASETS
@@ -551,4 +556,4 @@ if __name__ == "__main__":
             logger.info(dataset.data)
             logger.info(f"Sample text: {dataset.data.raw_texts[0]}")
 
-    test_load_dataset()
+    test_load_dataset(cfg)

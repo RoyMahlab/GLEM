@@ -19,7 +19,16 @@ The core packages are as below:
 - pytorch=1.10.2
 - pyg=2.0.3
 
-To use our exact environment, one may install the environment by the following command:
+To use our exact environment, install it with [uv](https://docs.astral.sh/uv/):
+```
+uv sync
+```
+This resolves `pyproject.toml`/`uv.lock`, fetches CPython 3.8.12, and pulls the
+CUDA builds of PyTorch (cu113), DGL (cu111) and the PyG extensions from their
+respective wheel indexes. Prefix commands with `uv run` to use it. Note that the
+CUDA runtime wheels are ~600 MB, so the first sync can take a while.
+
+The original conda environment is still described by `environment.yml`:
 ```
 conda env create -f environment.yml
 ```
@@ -27,7 +36,7 @@ conda env create -f environment.yml
 ## Running training on OGB-Arxiv
 
 ```
-/home/roymahlab/miniconda3/envs/ct/bin/python src/models/GLEM/trainGLEM.py \
+uv run python src/models/GLEM/trainGLEM.py \
   --dataset=arxiv_TA --em_order=GNN-first --gnn_early_stop=300 --gnn_epochs=500 \
   --gnn_input_norm=F --gnn_label_input=T --gnn_model=GCN --gnn_pl_ratio=0.2 --gnn_pl_weight=0.7 \
   --inf_n_epochs=2 --inf_tr_n_nodes=100000 --lm_ce_reduction=mean --lm_cla_dropout=0.4 \
