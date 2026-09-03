@@ -9,3 +9,6 @@ temp_results/
 
 GLEM/
 local_models/
+wandb/
+glem.egg-info/
+logs/
