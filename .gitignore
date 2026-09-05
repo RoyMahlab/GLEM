@@ -12,3 +12,4 @@ local_models/
 wandb/
 glem.egg-info/
 logs/
+temp_og/

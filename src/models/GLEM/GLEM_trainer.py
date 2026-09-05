@@ -53,6 +53,7 @@ class GLEMTrainer():
             available_gpus = self.cf.gpus.split(',')
             gpus = ','.join(available_gpus[:min(self.cf.prt_lm.max_n_gpus, len(available_gpus))])
             cmd = f'{self.cf.lm_tr_prefix} -m{self.cf.lm_model} {self.cf.prt_lm.cmd} --save_folder={prt_emi.lm.folder} -d{self.cf.dataset} -g{gpus} {f"-wLM_Prt_{self.cf.dataset[:4]}" if self.cf.wandb_on else ""} --em_iter=-1'
+            import pdb; pdb.set_trace()
             uf.run_command_parallel(cmd, gpus, self.log)
             th.cuda.empty_cache()
 
@@ -133,6 +134,8 @@ class GLEMTrainer():
         # uf.silent_remove(self.cur_emi.lm.folder)
 
     def glem_train(self):
+        import pdb; pdb.set_trace()
+
         self._pre_train_lm()  # Get LM emb + pred
         self._pre_train_gnn()  # Get GNN pred (OGB)
         for self.em_iter in self.em_range:
