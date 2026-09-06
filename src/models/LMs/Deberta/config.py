@@ -20,6 +20,11 @@ class DeBERTaConfig(LMConfig):
                     inf={12: 150, 16: 200, 24: 150, 32: 512, 40: 580, 70: 1120},
                 ),
                 prt_lm={  # Initial LM configs
+                    'cora': SN(
+                        model='FtV1',
+                        cmd='--att_dropout=0.1 --cla_dropout=0.4 --dropout=0.3 --epochs=4 --eq_batch_size=36 --eval_patience=50000 --label_smoothing_factor=0.3 --load_best_model_at_end=T --lr=2e-05 --warmup_epochs=0.6',
+                        max_n_gpus=4,
+                    ),
                     'arxiv': SN(
                         model='FtV1',
                         cmd='--att_dropout=0.1 --cla_dropout=0.4 --dropout=0.3 --epochs=4 --eq_batch_size=36 --eval_patience=50000 --label_smoothing_factor=0.3 --load_best_model_at_end=T --lr=2e-05 --warmup_epochs=0.6',

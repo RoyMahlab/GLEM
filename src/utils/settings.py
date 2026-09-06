@@ -61,10 +61,22 @@ DB_PATH = f'{PROJ_DIR}exp_db/'
 
 # ! Data Settings
 DATA_PATH = f'{PROJ_DIR}data/'
-OGB_ROOT = f'{PROJ_DIR}/data/ogb/'
+PYG_PATH = f'{PROJ_DIR}data/pyg/'
+OGB_ROOT = f'{PROJ_DIR}data/ogb/'
 
 #f'{MNT_DIR if MOUNTED else str(Path.home())}/data/ogb/' #f'{MNT_DIR if MOUNTED else str(Path.home())}/data/ogb/' # #   #f'{MNT_DIR if MOUNTED else str(Path.home())}/data/ogb/' #
 DATA_INFO = {
+    'cora': {
+        'type': 'pyg',
+        'train_ratio': 0,  # Default (public) split
+        'n_labels': 7,
+        'n_nodes': 2708,
+        'ogb_name': 'cora',
+        'raw_data_path': PYG_PATH,  # Place to save raw data
+        'max_length': 512,  # Place to save raw data
+        'data_root': f'{PYG_PATH}cora',  # Default ogb download target path
+        'raw_text_url': 'https://snap.stanford.edu/ogb/data/misc/ogbn_arxiv/titleabs.tsv.gz',
+    },
     'arxiv': {
         'type': 'ogb',
         'train_ratio': 0,  # Default (public) split
@@ -73,7 +85,7 @@ DATA_INFO = {
         'ogb_name': 'ogbn-arxiv',
         'raw_data_path': OGB_ROOT,  # Place to save raw data
         'max_length': 512,  # Place to save raw data
-        'data_root': f'{OGB_ROOT}ogbn_arxiv/',  # Default ogb download target path
+        'data_root': f'{OGB_ROOT}ogbn_arxiv',  # Default ogb download target path
         'raw_text_url': 'https://snap.stanford.edu/ogb/data/misc/ogbn_arxiv/titleabs.tsv.gz',
     },
     'paper': {
@@ -84,7 +96,7 @@ DATA_INFO = {
         'ogb_name': 'ogbn-papers100M',  #
         'download_name': 'paperinfo',
         'raw_data_path': OGB_ROOT,  # Place to save raw data
-        'data_root': f'{OGB_ROOT}ogbn_papers100M/',  # Default ogb download target path
+        'data_root': f'{OGB_ROOT}ogbn_papers100M',  # Default ogb download target path
         'max_length': 512,
         'raw_text_url': 'https://snap.stanford.edu/ogb/data/misc/ogbn_papers100M/paperinfo.zip',
     },

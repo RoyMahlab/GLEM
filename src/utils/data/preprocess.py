@@ -5,6 +5,7 @@ import time
 import dgl
 import numpy as np
 import pandas as pd
+from typing import Tuple
 import torch as th
 from transformers import AutoTokenizer
 import time
@@ -57,6 +58,7 @@ def tokenize_graph(cf):
     full_dict['dataset'] = '_'.join(full_dict['dataset'].split('_')[:2])
     full_cf = cf.__class__(SN(**full_dict)).init()
     d = full_cf.data
+    import pdb; pdb.set_trace()
     if not d.is_processed('token'):
         if cf.local_rank <= 0:
             # ! Load full-graph
@@ -132,13 +134,14 @@ def process_pyg_graph_structure(data, cf):
     return adj
 
 
-def load_ogb_graph_structure_only(cf):
+def load_ogb_graph_structure_only(cf) -> Tuple[dgl.DGLGraph, np.ndarray, dict]:
     from ogb.nodeproppred import DglNodePropPredDataset
     data = DglNodePropPredDataset(cf.data.ogb_name, root=uf.init_path(cf.data.raw_data_path))
     g, labels = data[0]
     split_idx = data.get_idx_split()
     labels = labels.squeeze().numpy()
     return g, labels, split_idx
+
 
 
 def load_pyg_graph_structure_only(cf):
@@ -148,14 +151,57 @@ def load_pyg_graph_structure_only(cf):
     split_idx = dataset.get_idx_split()
     return data, split_idx
 
+def pyg_to_dgl(data):
+    src, dst = data.edge_index
+
+    graph = dgl.graph(
+        (src, dst),
+        num_nodes=data.num_nodes,
+        device=data.edge_index.device,
+    )
+
+    # Copy node features
+    if hasattr(data, "x") and data.x is not None:
+        graph.ndata["feat"] = data.x
+
+    # Copy node labels
+    if hasattr(data, "y") and data.y is not None:
+        graph.ndata["label"] = data.y
+
+    return graph
+
+
+def load_citation_graph_structure_only(cf) -> Tuple[dgl.DGLGraph, np.ndarray, dict]:
+    from torch_geometric.datasets import Planetoid
+    dataset = Planetoid(root=uf.init_path(cf.data.raw_data_path), name=cf.data.ogb_name)
+    data = dataset[0]
+    labels = data.y.numpy()
+    split_idx = {'train': data.train_mask.nonzero(as_tuple=True)[0],
+                 'valid': data.val_mask.nonzero(as_tuple=True)[0],
+                 'test': data.test_mask.nonzero(as_tuple=True)[0]}
+    return pyg_to_dgl(data), labels, split_idx
+
+# cf: GLEMConfig
+def load_graph_structure(cf) -> Tuple[dgl.DGLGraph, np.ndarray, dict]:
+    dataset = cf.dataset
+    if dataset in ['arxiv_TA', 'products', 'papers100M']:
+        return load_ogb_graph_structure_only(cf)
+    elif dataset in ['computers', 'photo', 'cs', 'physics']:
+        return load_pyg_graph_structure_only(cf)
+    else:
+        # dataset in 'cora', 'citeseer', 'pubmed', 
+        return load_citation_graph_structure_only(cf)
+
+
 
 def load_graph_info(cf):
     d = cf.data
     # ! Process Full Graph
+
     if not d.is_processed('g_info'):
         # Load OGB
         if cf.local_rank <= 0:
-            g, labels, split_idx = load_ogb_graph_structure_only(cf)
+            g, labels, split_idx = load_graph_structure(cf)
             # Process and save supervision
             splits = {**{f'{_}_x': split_idx[_].numpy() for _ in ['train', 'valid', 'test']}, 'labels': labels}
             is_gold = np.zeros((g.num_nodes()), dtype=bool)
@@ -182,8 +228,11 @@ def load_graph_info(cf):
     g_info = uf.pickle_load(d._g_info_file)
     return g_info
 
+def load_texts():
+    pass
 
-def _tokenize_ogb_arxiv_datasets(d, labels, chunk_size=50000):
+
+def _tokenize_ogb_arxiv_datasets(d, labels, chunk_size=50_000):
     def merge_by_ids(meta_data, node_ids, categories):
         meta_data.columns = ["ID", "Title", "Abstract"]
         # meta_data.drop([0, meta_data.shape[0] - 1], axis=0, inplace=True)  # Drop first and last in Arxiv full dataset processing
@@ -219,7 +268,7 @@ def _tokenize_ogb_arxiv_datasets(d, labels, chunk_size=50000):
 
     from ogb.utils.url import download_url, extract_zip
     # Get Raw text path
-    assert d.ogb_name in ['ogbn-arxiv', 'ogbn-papers100M']
+    assert d.ogb_name in ['ogbn-arxiv', 'ogbn-papers100M', 'cora']
     print(f'Loading raw text for {d.ogb_name}')
     raw_text_path = download_url(d.raw_text_url, d.data_root)
     print('d.hf_model', d.hf_model)

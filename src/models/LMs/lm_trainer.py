@@ -35,7 +35,6 @@ class LMTrainer():
     def train(self):
         # ! Prepare data
         self.d = d = SeqGraph(cf := self.cf).init()
-        import pdb; pdb.set_trace()
         gold_data = SeqGraphDataset(self.d, mode='train_gold')
         subset_data = lambda sub_idx: th.utils.data.Subset(gold_data, sub_idx)
         self.datasets = {_: subset_data(getattr(d, f'{_}_x'))
